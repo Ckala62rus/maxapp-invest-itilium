@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: "maxapp-itilium-backend"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - backend:3000
+          - backend-dev:3000

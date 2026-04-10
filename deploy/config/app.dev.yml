@@ -1,0 +1,61 @@
+# Development configuration mounted into the backend container.
+# Environment variables may override individual values when needed.
+app:
+  # Human-readable service name used in logs and dashboards.
+  name: maxapp-itilium
+  # Runtime environment for development stack.
+  env: development
+  # Service version for local builds.
+  version: 0.1.0-dev
+  # Demo mode keeps the scaffold usable before the live ITILIUM contract is wired end-to-end.
+  demo_mode: true
+
+http:
+  # Bind host for the HTTP API inside the container.
+  host: 0.0.0.0
+  # Bind port for the HTTP API inside the container.
+  port: 3000
+  # Request read timeout.
+  read_timeout: 10s
+  # Response write timeout.
+  write_timeout: 15s
+  # Keep-alive idle timeout.
+  idle_timeout: 60s
+
+logging:
+  # Use text logs in development so `docker logs` stays easy to read.
+  level: debug
+  format: text
+
+itilium:
+  # Base URL is intentionally blank in demo mode.
+  base_url: ""
+  # Credentials are supplied through environment variables on live integration.
+  login: ""
+  password: ""
+  # Timeout for outbound ITILIUM requests.
+  timeout: 20s
+
+redis:
+  # Redis cache host and port used in docker compose.
+  address: redis:6379
+  # Password stays empty in local development by default.
+  password: ""
+  # Logical Redis database index.
+  db: 0
+  # Keep Redis enabled so cache integration can be tested locally.
+  enabled: true
+
+postgres:
+  # Postgres host used from the compose network.
+  host: postgres
+  # Postgres port used from the compose network.
+  port: 5432
+  # Main database name for application data.
+  database: app
+  # Main database user.
+  user: postgres
+  # Main database password.
+  password: postgres
+  # Disable SSL for local docker networking.
+  ssl_mode: disable

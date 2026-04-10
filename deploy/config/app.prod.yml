@@ -1,0 +1,61 @@
+# Production configuration mounted into the backend container.
+# Sensitive values should still be passed via environment overrides or secrets.
+app:
+  # Human-readable service name used in logs and dashboards.
+  name: maxapp-itilium
+  # Runtime environment for the production stack.
+  env: production
+  # Service version for release builds.
+  version: 0.1.0
+  # Disable demo mode so the real ITILIUM client is required.
+  demo_mode: false
+
+http:
+  # Bind host for the HTTP API inside the container.
+  host: 0.0.0.0
+  # Bind port for the HTTP API inside the container.
+  port: 3000
+  # Request read timeout.
+  read_timeout: 10s
+  # Response write timeout.
+  write_timeout: 20s
+  # Keep-alive idle timeout.
+  idle_timeout: 60s
+
+logging:
+  # JSON logs are better for Loki ingestion in production.
+  level: info
+  format: json
+
+itilium:
+  # Base URL should be overridden from the deployment environment.
+  base_url: ""
+  # Credentials should be overridden from the deployment environment.
+  login: ""
+  password: ""
+  # Timeout for outbound ITILIUM requests.
+  timeout: 20s
+
+redis:
+  # Redis cache host and port used in docker compose.
+  address: redis:6379
+  # Password should be overridden in production when auth is enabled.
+  password: ""
+  # Logical Redis database index.
+  db: 0
+  # Keep Redis enabled in production.
+  enabled: true
+
+postgres:
+  # Postgres host used from the compose network.
+  host: postgres
+  # Postgres port used from the compose network.
+  port: 5432
+  # Main database name for application data.
+  database: app
+  # Main database user.
+  user: postgres
+  # Main database password should be overridden in production.
+  password: postgres
+  # Disable SSL for internal docker networking unless your environment requires it.
+  ssl_mode: disable

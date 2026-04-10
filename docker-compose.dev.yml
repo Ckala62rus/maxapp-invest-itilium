@@ -1,0 +1,149 @@
+services:
+  # Backend with hot reload for Go development.
+  backend-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.live
+    container_name: maxapp-itilium-backend-dev
+    environment:
+      CONFIG_PATH: /app/config.yml
+      APP_ENV: development
+      APP_DEMO_MODE: "true"
+      REDIS_ENABLED: "true"
+    volumes:
+      - ./:/app
+      - ./deploy/config/app.dev.yml:/app/config.yml:ro
+      - go_mod_cache:/go/pkg/mod
+      - go_build_cache:/root/.cache/go-build
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - appnet
+    logging:
+      driver: loki
+      options:
+        loki-url: "${LOKI_URL:-http://127.0.0.1:3100/loki/api/v1/push}"
+
+  # Frontend dev server with Vite hot reload.
+  frontend:
+    image: node:20.18-alpine
+    container_name: maxapp-itilium-frontend-dev
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    networks:
+      - appnet
+
+  # Nginx aggregates the frontend dev server and backend API under one origin.
+  web-dev:
+    image: nginx:1.27-alpine
+    container_name: maxapp-itilium-web-dev
+    depends_on:
+      - frontend
+      - backend-dev
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - appnet
+
+  # Postgres stores application state and migration targets.
+  postgres:
+    image: postgres:16-alpine
+    container_name: maxapp-itilium-postgres-dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - appnet
+
+  # Redis stores cache entries for repeated reads.
+  redis:
+    image: redis:7.4-alpine
+    container_name: maxapp-itilium-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - appnet
+
+  # Migrations are executed manually through this tools profile.
+  migrate:
+    image: migrate/migrate:v4.18.3
+    container_name: maxapp-itilium-migrate-dev
+    profiles:
+      - tools
+    volumes:
+      - ./migrations:/migrations:ro
+    networks:
+      - appnet
+
+  # Loki stores structured and plain container logs.
+  loki:
+    image: grafana/loki:3.4.1
+    container_name: maxapp-itilium-loki-dev
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - appnet
+
+  # Prometheus scrapes the Go metrics endpoint.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: maxapp-itilium-prometheus-dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - backend-dev
+    networks:
+      - appnet
+
+  # Grafana visualizes metrics and logs.
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: maxapp-itilium-grafana-dev
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - loki
+      - prometheus
+    networks:
+      - appnet
+
+volumes:
+  postgres_data_dev:
+  frontend_node_modules:
+  go_mod_cache:
+  go_build_cache:
+
+networks:
+  appnet:
+    driver: bridge
