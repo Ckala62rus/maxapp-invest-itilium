@@ -1,0 +1,128 @@
+# Route Documentation
+
+## Middleware Chain
+Every request passes through the same middleware chain defined in `internal/handlers/routes.go`.
+
+1. `RequestID`
+   - Creates or reuses `X-Request-ID`
+   - Stores it in request context
+2. `Identity`
+   - Extracts user id from `X-User-ID` or `userId`
+   - Stores it in request context
+3. `Recover`
+   - Converts panics into structured `500` responses
+4. `Metrics`
+   - Collects Prometheus request counters and latency
+5. `Logging`
+   - Logs request and response metadata
+
+## Infrastructure Routes
+
+### `GET /healthz`
+- Handler: `Handler.Health`
+- Purpose: liveness probe
+- Response: simple `ok`
+
+### `GET /readyz`
+- Handler: `Handler.Ready`
+- Purpose: readiness probe
+- Response: simple `ready`
+
+### `GET /metrics`
+- Handler: Prometheus `promhttp.Handler`
+- Purpose: metrics scraping
+
+## API Routes
+
+### `GET /api/v1/users/me`
+- Handler: `Handler.GetProfile`
+- Service: `ProfileService.GetProfile`
+- Flow:
+  - reads `user_id` from middleware context
+  - loads user profile from repository
+  - if no profile exists, returns fallback profile that requires registration
+
+### `POST /api/v1/users/register`
+- Handler: `Handler.RegisterUser`
+- Service: `ProfileService.Register`
+- Flow:
+  - decodes registration form
+  - validates required fields
+  - stores registration through repository
+  - returns updated profile snapshot
+
+### `GET /api/v1/tickets`
+- Handler: `Handler.ListMyTickets`
+- Service: `TicketService.ListMyTickets`
+- Flow:
+  - reads `user_id`
+  - calls the ITILIUM client
+  - returns a list for the `myTickets` screen
+
+### `GET /api/v1/tickets/responsible`
+- Handler: `Handler.ListResponsibleTickets`
+- Service: `TicketService.ListResponsibleTickets`
+- Flow:
+  - reads `user_id`
+  - calls the ITILIUM client
+  - returns a list for the `responsible` screen
+
+### `POST /api/v1/tickets/search`
+- Handler: `Handler.SearchTicket`
+- Service: `TicketService.SearchTicket`
+- Flow:
+  - decodes ticket number payload
+  - calls the ITILIUM client search endpoint
+  - returns the full ticket card
+
+### `POST /api/v1/tickets`
+- Handler: `Handler.CreateTicket`
+- Service: `TicketService.CreateTicket`
+- Flow:
+  - decodes create form
+  - validates minimal required fields
+  - calls the ITILIUM create endpoint
+  - returns the created ticket
+
+### `GET /api/v1/tickets/{number}`
+- Handler: `Handler.GetTicket`
+- Service: `TicketService.GetTicket`
+- Flow:
+  - checks Redis cache first
+  - if cache miss, calls the ITILIUM client
+  - returns the full ticket card
+
+### `POST /api/v1/tickets/{number}/comments`
+- Handler: `Handler.AddComment`
+- Service: `TicketService.AddComment`
+- Flow:
+  - decodes comment payload
+  - validates comment body
+  - calls ITILIUM to add the comment
+  - returns updated ticket detail
+
+### `POST /api/v1/tickets/{number}/status`
+- Handler: `Handler.ChangeStatus`
+- Service: `TicketService.ChangeStatus`
+- Flow:
+  - decodes status transition payload
+  - validates target state
+  - calls ITILIUM to change workflow state
+  - returns updated ticket detail
+
+### `GET /api/v1/tickets/{number}/responsibles`
+- Handler: `Handler.ListResponsibleOptions`
+- Service: `TicketService.ListResponsibleOptions`
+- Flow:
+  - reads ticket number
+  - calls ITILIUM for available responsible people
+  - returns the selector list used by the ticket card
+
+### `POST /api/v1/tickets/{number}/responsible`
+- Handler: `Handler.ChangeResponsible`
+- Service: `TicketService.ChangeResponsible`
+- Flow:
+  - decodes selected responsible person id
+  - validates payload
+  - calls ITILIUM to change assignee
+  - returns updated ticket detail
