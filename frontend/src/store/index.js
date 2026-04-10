@@ -1,4 +1,5 @@
 import { createStore } from 'vuex'
+import auth from '@/store/modules/auth'
 
 // The root store aggregates domain modules and shared state.
 export default createStore({
@@ -6,5 +7,7 @@ export default createStore({
   getters: {},
   mutations: {},
   actions: {},
-  modules: {}
+  modules: {
+    auth
+  }
 })
