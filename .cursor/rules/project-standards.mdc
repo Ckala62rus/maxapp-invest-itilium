@@ -1,0 +1,30 @@
+---
+description: Global engineering standards for MAX ITILIUM project
+alwaysApply: true
+---
+
+# MAX ITILIUM Standards
+
+- Follow SOLID, DRY and KISS.
+- `KISS` means: prefer the simplest design that satisfies the current requirement without speculative abstraction.
+- Development happens on `Windows 10`, but production runs on `Ubuntu Linux`; keep paths, scripts, Docker files and runtime behavior compatible with Linux deployment.
+- Use explicit dependency injection with manual composition.
+- Declare interfaces close to the consumer that depends on them.
+- Keep handlers thin; business logic belongs in services.
+- Keep integrations with external systems behind dedicated clients in `internal/api`.
+- Every exported Go type, field, function and method must have a meaningful comment.
+- Every non-trivial Vue component, composable and action handler must explain the data flow with concise comments.
+- Write tests for business logic and edge cases; avoid low-value snapshot-style tests.
+- Generate mocks from interfaces instead of hand-writing stubs when feasible.
+- Add structured logging for inbound requests, outbound ITILIUM requests, user identity, latency and error context.
+- Keep stdout logs readable in containers and make sure the same logs can be shipped to Loki.
+- Add metrics for HTTP, DB, Redis and ITILIUM calls.
+- Configuration must be documented and mounted into containers via volumes, not hardcoded in images.
+- Document every route: middleware chain, handler, service calls and external dependencies.
+- Avoid hidden magic, global state and tight coupling between packages.
+- Every completed functional slice must be committed immediately as a small thematic commit in Russian before starting the next slice.
+- Each commit must include only the feature itself and the exact places where it is wired in; do not mix unrelated files.
+- `example/` is local reference material and must never be included in commits.
+- Use `Vuex` actively in the Vue 3 frontend with module-level `state`, `getters`, `mutations`, `actions` and named constants for action, mutation and getter types.
+- Keep all backend HTTP calls in `frontend/src/api`, with a shared axios client, centralized URL definitions and domain-specific API modules.
+- Add concise comments and function descriptions in non-trivial Vue components, action handlers and frontend data flows.
