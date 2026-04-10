@@ -2,7 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 
-import { actionTypes, getterTypes } from '@/store/modules/auth'
+import {
+  actionTypes as authActionTypes,
+  getterTypes as authGetterTypes
+} from '@/store/modules/auth'
+import {
+  actionTypes as ticketActionTypes,
+  getterTypes as ticketGetterTypes
+} from '@/store/modules/tickets'
 
 const store = useStore()
 
@@ -81,17 +88,33 @@ const responsiblePeople = [
 // A computed slice is enough to show how page navigation will behave.
 const paginatedTickets = computed(() => {
   const start = (currentTicketsPage.value - 1) * 3
-  return myTickets.slice(start, start + 3)
+  return normalizedMyTickets.value.slice(start, start + 3)
 })
 
 // The page count drives the pager buttons in the static demo.
-const pageCount = computed(() => Math.ceil(myTickets.length / 3))
+const pageCount = computed(() => Math.ceil(normalizedMyTickets.value.length / 3))
 
 // Store-backed auth state lets the profile and registration screens
 // use the same data flow that future real screens will rely on.
-const currentUser = computed(() => store.getters[getterTypes.user] || null)
-const isRegistrationSubmitting = computed(() => store.getters[getterTypes.isSubmitting])
-const authErrors = computed(() => store.getters[getterTypes.authError] || [])
+const currentUser = computed(() => store.getters[authGetterTypes.user] || null)
+const isRegistrationSubmitting = computed(() => store.getters[authGetterTypes.isSubmitting])
+const authErrors = computed(() => store.getters[authGetterTypes.authError] || [])
+const storeMyTickets = computed(() => store.getters[ticketGetterTypes.myTickets] || [])
+const storeResponsibleTickets = computed(() => store.getters[ticketGetterTypes.responsibleTickets] || [])
+const isLoadingMyTickets = computed(() => store.getters[ticketGetterTypes.isLoadingMyTickets])
+const isLoadingResponsibleTickets = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleTickets])
+const ticketsErrors = computed(() => store.getters[ticketGetterTypes.ticketsError] || [])
+const normalizedMyTickets = computed(() => {
+  return storeMyTickets.value.length ? storeMyTickets.value : myTickets
+})
+const normalizedResponsibleTickets = computed(() => {
+  const source = storeResponsibleTickets.value.length ? storeResponsibleTickets.value : responsibleTickets
+
+  return source.map((ticket) => ({
+    ...ticket,
+    owner: ticket.owner || ticket.responsibleTeam || 'Не указано'
+  }))
+})
 const profileInitials = computed(() => {
   const fullName = currentUser.value?.fullName || 'MAX Пользователь'
 
@@ -133,7 +156,9 @@ watch(currentUser, (user) => {
 }, { immediate: true })
 
 onMounted(() => {
-  store.dispatch(actionTypes.me)
+  store.dispatch(authActionTypes.me)
+  store.dispatch(ticketActionTypes.loadMyTickets)
+  store.dispatch(ticketActionTypes.loadResponsibleTickets)
 })
 
 // This helper switches screens from the top navigation and action buttons.
@@ -161,7 +186,7 @@ function simulateSearch() {
 // Registration now goes through the shared auth module so the UI already uses
 // the same request lifecycle that future componentized screens will reuse.
 async function submitRegistration() {
-  const response = await store.dispatch(actionTypes.register, {
+  const response = await store.dispatch(authActionTypes.register, {
     userId: currentUser.value?.userId || '',
     employeeNumber: registrationForm.value.employeeNumber,
     fullName: registrationForm.value.fullName,
@@ -445,7 +470,17 @@ function setTicketsPage(page) {
             <span class="status-pill info">Пагинация готова</span>
           </div>
 
-          <div class="list-stack">
+          <article v-if="isLoadingMyTickets" class="state-card">
+            <div class="spinner"></div>
+            <div>
+              <h3>Загружаем список</h3>
+              <p>Получаем ваши заявки из общего Vuex store и backend API.</p>
+            </div>
+          </article>
+
+          <p v-else-if="ticketsErrors.length" class="status-pill rose">{{ ticketsErrors[0] }}</p>
+
+          <div v-else class="list-stack">
             <article
               v-for="ticket in paginatedTickets"
               :key="ticket.number"
@@ -461,7 +496,7 @@ function setTicketsPage(page) {
             </article>
           </div>
 
-          <div class="pagination">
+          <div v-if="pageCount > 1" class="pagination">
             <button
               v-for="page in pageCount"
               :key="page"
@@ -483,9 +518,19 @@ function setTicketsPage(page) {
             <span class="status-pill warning">Требуют реакции</span>
           </div>
 
-          <div class="list-stack">
+          <article v-if="isLoadingResponsibleTickets" class="state-card">
+            <div class="spinner"></div>
+            <div>
+              <h3>Загружаем ответственность</h3>
+              <p>Получаем заявки, закрепленные за текущим пользователем.</p>
+            </div>
+          </article>
+
+          <p v-else-if="ticketsErrors.length" class="status-pill rose">{{ ticketsErrors[0] }}</p>
+
+          <div v-else class="list-stack">
             <article
-              v-for="ticket in responsibleTickets"
+              v-for="ticket in normalizedResponsibleTickets"
               :key="ticket.number"
               class="ticket-card"
               @click="openTicketDetails(ticket.number)"
