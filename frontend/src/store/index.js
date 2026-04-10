@@ -1,5 +1,6 @@
 import { createStore } from 'vuex'
 import auth from '@/store/modules/auth'
+import tickets from '@/store/modules/tickets'
 
 // The root store aggregates domain modules and shared state.
 export default createStore({
@@ -8,6 +9,7 @@ export default createStore({
   mutations: {},
   actions: {},
   modules: {
-    auth
+    auth,
+    tickets
   }
 })
