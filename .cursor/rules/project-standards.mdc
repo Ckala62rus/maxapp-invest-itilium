@@ -24,6 +24,7 @@ alwaysApply: true
 - Avoid hidden magic, global state and tight coupling between packages.
 - Every completed functional slice must be committed immediately as a small thematic commit in Russian before starting the next slice.
 - Each commit must include only the feature itself and the exact places where it is wired in; do not mix unrelated files.
+- After each small thematic commit, push it to the remote repository as soon as it is safe to do so instead of accumulating a long unpublished local history.
 - `example/` is local reference material and must never be included in commits.
 - Use `Vuex` actively in the Vue 3 frontend with module-level `state`, `getters`, `mutations`, `actions` and named constants for action, mutation and getter types.
 - Keep all backend HTTP calls in `frontend/src/api`, with a shared axios client, centralized URL definitions and domain-specific API modules.
