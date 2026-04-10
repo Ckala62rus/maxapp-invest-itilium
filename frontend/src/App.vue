@@ -1,5 +1,10 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useStore } from 'vuex'
+
+import { actionTypes, getterTypes } from '@/store/modules/auth'
+
+const store = useStore()
 
 // Screen ids are used by the static prototype navigator.
 const screenOptions = [
@@ -24,6 +29,15 @@ const searchQuery = ref('SC-000245')
 
 // The current list page shows how pagination will look in the future app.
 const currentTicketsPage = ref(1)
+
+// The registration form keeps editable UI state while auth data lives in Vuex.
+const registrationForm = ref({
+  employeeNumber: '004512',
+  fullName: '',
+  department: '',
+  phone: '+7 (999) 123-45-67',
+  comment: 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
+})
 
 // The prototype dashboard metrics visually summarize the product scope.
 const summaryCards = [
@@ -73,6 +87,55 @@ const paginatedTickets = computed(() => {
 // The page count drives the pager buttons in the static demo.
 const pageCount = computed(() => Math.ceil(myTickets.length / 3))
 
+// Store-backed auth state lets the profile and registration screens
+// use the same data flow that future real screens will rely on.
+const currentUser = computed(() => store.getters[getterTypes.user] || null)
+const isRegistrationSubmitting = computed(() => store.getters[getterTypes.isSubmitting])
+const authErrors = computed(() => store.getters[getterTypes.authError] || [])
+const profileInitials = computed(() => {
+  const fullName = currentUser.value?.fullName || 'MAX Пользователь'
+
+  return fullName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((item) => item[0])
+    .join('')
+    .toUpperCase()
+})
+const profileStatusText = computed(() => {
+  return currentUser.value?.employeeFound
+    ? 'Пользователь найден и связан с ITILIUM'
+    : 'Не найден, нужна регистрация'
+})
+const profileRegion = computed(() => {
+  const department = currentUser.value?.department || ''
+
+  if (!department) {
+    return 'Не определено'
+  }
+
+  const parts = department.split(',')
+
+  return parts[parts.length - 1].trim()
+})
+
+// When the profile changes, the registration form is prefilled from the same source
+// so the user does not re-enter obvious data during the MAX onboarding flow.
+watch(currentUser, (user) => {
+  registrationForm.value = {
+    employeeNumber: registrationForm.value.employeeNumber || '004512',
+    fullName: user?.fullName || '',
+    department: user?.department || '',
+    phone: registrationForm.value.phone || '+7 (999) 123-45-67',
+    comment: registrationForm.value.comment || 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  store.dispatch(actionTypes.me)
+})
+
 // This helper switches screens from the top navigation and action buttons.
 function openScreen(screenId) {
   activeScreen.value = screenId
@@ -93,6 +156,24 @@ function simulateSubmit(message) {
 // This helper simulates the search result flow.
 function simulateSearch() {
   activeScreen.value = 'details'
+}
+
+// Registration now goes through the shared auth module so the UI already uses
+// the same request lifecycle that future componentized screens will reuse.
+async function submitRegistration() {
+  const response = await store.dispatch(actionTypes.register, {
+    userId: currentUser.value?.userId || '',
+    employeeNumber: registrationForm.value.employeeNumber,
+    fullName: registrationForm.value.fullName,
+    department: registrationForm.value.department,
+    phone: registrationForm.value.phone,
+    comment: registrationForm.value.comment
+  })
+
+  if (response?.data?.success) {
+    submitBanner.value = 'Регистрационная форма отправлена на проверку.'
+    activeScreen.value = 'profile'
+  }
 }
 
 // This helper changes the pager while keeping the prototype deterministic.
@@ -226,16 +307,16 @@ function setTicketsPage(page) {
 
           <article class="content-card">
             <div class="profile-row">
-              <div class="avatar">АМ</div>
+              <div class="avatar">{{ profileInitials }}</div>
               <div>
-                <h3>Александр Максимов</h3>
-                <p>@amaximov · user_id 100245</p>
+                <h3>{{ currentUser?.fullName || 'Загрузка профиля...' }}</h3>
+                <p>@{{ currentUser?.username || 'unknown' }} · user_id {{ currentUser?.userId || '...' }}</p>
               </div>
             </div>
             <div class="details-grid">
               <div>
                 <span>Статус в ITILIUM</span>
-                <strong>Не найден, нужна регистрация</strong>
+                <strong>{{ profileStatusText }}</strong>
               </div>
               <div>
                 <span>Роль в MAX</span>
@@ -243,15 +324,18 @@ function setTicketsPage(page) {
               </div>
               <div>
                 <span>Регион</span>
-                <strong>Казань</strong>
+                <strong>{{ profileRegion }}</strong>
               </div>
               <div>
                 <span>Последний вход</span>
                 <strong>09.04.2026 22:30</strong>
               </div>
             </div>
-            <button class="primary-button wide" @click="openScreen('registration')">
-              Перейти к регистрации
+            <button
+              class="primary-button wide"
+              @click="openScreen(currentUser?.registrationRequired ? 'registration' : 'home')"
+            >
+              {{ currentUser?.registrationRequired ? 'Перейти к регистрации' : 'Перейти на главную' }}
             </button>
           </article>
         </section>
@@ -268,26 +352,27 @@ function setTicketsPage(page) {
           <article class="content-card form-card">
             <label>
               Табельный номер
-              <input type="text" value="004512" />
+              <input v-model="registrationForm.employeeNumber" type="text" />
             </label>
             <label>
               ФИО
-              <input type="text" value="Александр Максимов" />
+              <input v-model="registrationForm.fullName" type="text" />
             </label>
             <label>
               Магазин / подразделение
-              <input type="text" value="Магазин 17, Казань" />
+              <input v-model="registrationForm.department" type="text" />
             </label>
             <label>
               Телефон
-              <input type="text" value="+7 (999) 123-45-67" />
+              <input v-model="registrationForm.phone" type="text" />
             </label>
             <label>
               Комментарий
-              <textarea rows="4">Прошу связать мой аккаунт MAX с карточкой сотрудника.</textarea>
+              <textarea v-model="registrationForm.comment" rows="4"></textarea>
             </label>
-            <button class="primary-button wide" @click="simulateSubmit('Регистрационная форма отправлена на проверку.')">
-              Отправить заявку на регистрацию
+            <p v-if="authErrors.length" class="status-pill rose">{{ authErrors[0] }}</p>
+            <button class="primary-button wide" :disabled="isRegistrationSubmitting" @click="submitRegistration">
+              {{ isRegistrationSubmitting ? 'Отправка...' : 'Отправить заявку на регистрацию' }}
             </button>
           </article>
         </section>
