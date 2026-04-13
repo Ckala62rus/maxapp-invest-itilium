@@ -6,6 +6,11 @@ const listMyTickets = () => {
   return axios.get(urls.myTickets)
 }
 
+// createTicket submits the new ticket form and returns the created ticket detail.
+const createTicket = (payload) => {
+  return axios.post(urls.myTickets, payload)
+}
+
 // listResponsibleTickets loads the list where the current user is responsible.
 const listResponsibleTickets = () => {
   return axios.get(urls.responsibleTickets)
@@ -43,6 +48,7 @@ const changeResponsible = (number, payload) => {
 
 export default {
   listMyTickets,
+  createTicket,
   listResponsibleTickets,
   searchTicket,
   getTicketDetails,

@@ -9,11 +9,13 @@ const state = {
   isLoadingResponsibleTickets: false,
   isLoadingTicketDetails: false,
   isLoadingResponsibleOptions: false,
+  isCreatingTicket: false,
   isSubmittingComment: false,
   isChangingStatus: false,
   isChangingResponsible: false,
   listError: [],
-  ticketError: []
+  ticketError: [],
+  createError: []
 }
 
 export const mutationTypes = {
@@ -23,6 +25,9 @@ export const mutationTypes = {
   loadResponsibleTicketsStart: '[tickets] loadResponsibleTicketsStart',
   loadResponsibleTicketsSuccess: '[tickets] loadResponsibleTicketsSuccess',
   loadResponsibleTicketsFail: '[tickets] loadResponsibleTicketsFail',
+  createTicketStart: '[tickets] createTicketStart',
+  createTicketSuccess: '[tickets] createTicketSuccess',
+  createTicketFail: '[tickets] createTicketFail',
   loadTicketDetailsStart: '[tickets] loadTicketDetailsStart',
   loadTicketDetailsSuccess: '[tickets] loadTicketDetailsSuccess',
   loadTicketDetailsFail: '[tickets] loadTicketDetailsFail',
@@ -42,6 +47,7 @@ export const mutationTypes = {
 
 export const actionTypes = {
   loadMyTickets: '[tickets] loadMyTickets',
+  createTicket: '[tickets] createTicket',
   loadResponsibleTickets: '[tickets] loadResponsibleTickets',
   searchTicket: '[tickets] searchTicket',
   loadTicketDetails: '[tickets] loadTicketDetails',
@@ -58,13 +64,15 @@ export const getterTypes = {
   responsibleOptions: '[tickets] responsibleOptions',
   isLoadingMyTickets: '[tickets] isLoadingMyTickets',
   isLoadingResponsibleTickets: '[tickets] isLoadingResponsibleTickets',
+  isCreatingTicket: '[tickets] isCreatingTicket',
   isLoadingTicketDetails: '[tickets] isLoadingTicketDetails',
   isLoadingResponsibleOptions: '[tickets] isLoadingResponsibleOptions',
   isSubmittingComment: '[tickets] isSubmittingComment',
   isChangingStatus: '[tickets] isChangingStatus',
   isChangingResponsible: '[tickets] isChangingResponsible',
   listError: '[tickets] listError',
-  ticketError: '[tickets] ticketError'
+  ticketError: '[tickets] ticketError',
+  createError: '[tickets] createError'
 }
 
 function syncTicketSummaryList(list, ticket) {
@@ -87,6 +95,22 @@ function syncTicketSummaryList(list, ticket) {
   })
 }
 
+function prependTicketSummary(list, ticket) {
+  if (!ticket?.number) {
+    return list
+  }
+
+  const summary = {
+    number: ticket.number,
+    title: ticket.title,
+    state: ticket.state,
+    deadline: ticket.deadline,
+    responsibleTeam: ticket.responsibleTeam
+  }
+
+  return [summary, ...list.filter((item) => item.number !== ticket.number)]
+}
+
 const getters = {
   [getterTypes.myTickets]: (localState) => localState.myTickets,
   [getterTypes.responsibleTickets]: (localState) => localState.responsibleTickets,
@@ -94,13 +118,15 @@ const getters = {
   [getterTypes.responsibleOptions]: (localState) => localState.responsibleOptions,
   [getterTypes.isLoadingMyTickets]: (localState) => localState.isLoadingMyTickets,
   [getterTypes.isLoadingResponsibleTickets]: (localState) => localState.isLoadingResponsibleTickets,
+  [getterTypes.isCreatingTicket]: (localState) => localState.isCreatingTicket,
   [getterTypes.isLoadingTicketDetails]: (localState) => localState.isLoadingTicketDetails,
   [getterTypes.isLoadingResponsibleOptions]: (localState) => localState.isLoadingResponsibleOptions,
   [getterTypes.isSubmittingComment]: (localState) => localState.isSubmittingComment,
   [getterTypes.isChangingStatus]: (localState) => localState.isChangingStatus,
   [getterTypes.isChangingResponsible]: (localState) => localState.isChangingResponsible,
   [getterTypes.listError]: (localState) => localState.listError,
-  [getterTypes.ticketError]: (localState) => localState.ticketError
+  [getterTypes.ticketError]: (localState) => localState.ticketError,
+  [getterTypes.createError]: (localState) => localState.createError
 }
 
 const mutations = {
@@ -128,6 +154,20 @@ const mutations = {
   [mutationTypes.loadResponsibleTicketsFail](localState, errors) {
     localState.isLoadingResponsibleTickets = false
     localState.listError = errors
+  },
+
+  [mutationTypes.createTicketStart](localState) {
+    localState.isCreatingTicket = true
+    localState.createError = []
+  },
+  [mutationTypes.createTicketSuccess](localState, ticket) {
+    localState.isCreatingTicket = false
+    localState.selectedTicket = ticket
+    localState.myTickets = prependTicketSummary(localState.myTickets, ticket)
+  },
+  [mutationTypes.createTicketFail](localState, errors) {
+    localState.isCreatingTicket = false
+    localState.createError = errors
   },
 
   [mutationTypes.loadTicketDetailsStart](localState) {
@@ -221,6 +261,22 @@ const actions = {
         })
         .catch((error) => {
           context.commit(mutationTypes.loadMyTicketsFail, [error?.response?.data?.message || error.message])
+          resolve(error)
+        })
+    })
+  },
+
+  [actionTypes.createTicket](context, payload) {
+    return new Promise((resolve) => {
+      context.commit(mutationTypes.createTicketStart)
+
+      ticketsApi.createTicket(payload)
+        .then((response) => {
+          context.commit(mutationTypes.createTicketSuccess, response?.data?.data || null)
+          resolve(response)
+        })
+        .catch((error) => {
+          context.commit(mutationTypes.createTicketFail, [error?.response?.data?.message || error.message])
           resolve(error)
         })
     })

@@ -50,6 +50,16 @@ const statusForm = ref({
 // The responsible selector keeps the chosen ITILIUM assignee id before submit.
 const selectedResponsibleId = ref('')
 
+// The create form mirrors the backend ticket creation contract.
+const createTicketForm = ref({
+  requestType: 'Заявка в отдел ИТ',
+  title: 'Не открывается 1С на кассе',
+  description: 'После обновления 1С не запускается на рабочем месте кассира. Нужна диагностика и восстановление работы.',
+  department: 'Отдел ИТ',
+  executionDate: '2026-04-11',
+  attachments: ['screenshot-1.png', 'error-log.pdf']
+})
+
 // The registration form keeps editable UI state while auth data lives in Vuex.
 const registrationForm = ref({
   employeeNumber: '004512',
@@ -111,6 +121,7 @@ const selectedTicket = computed(() => store.getters[ticketGetterTypes.selectedTi
 const responsibleOptions = computed(() => store.getters[ticketGetterTypes.responsibleOptions] || [])
 const isLoadingMyTickets = computed(() => store.getters[ticketGetterTypes.isLoadingMyTickets])
 const isLoadingResponsibleTickets = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleTickets])
+const isCreatingTicket = computed(() => store.getters[ticketGetterTypes.isCreatingTicket])
 const isLoadingTicketDetails = computed(() => store.getters[ticketGetterTypes.isLoadingTicketDetails])
 const isLoadingResponsibleOptions = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleOptions])
 const isSubmittingComment = computed(() => store.getters[ticketGetterTypes.isSubmittingComment])
@@ -118,6 +129,7 @@ const isChangingStatus = computed(() => store.getters[ticketGetterTypes.isChangi
 const isChangingResponsible = computed(() => store.getters[ticketGetterTypes.isChangingResponsible])
 const listErrors = computed(() => store.getters[ticketGetterTypes.listError] || [])
 const ticketErrors = computed(() => store.getters[ticketGetterTypes.ticketError] || [])
+const createErrors = computed(() => store.getters[ticketGetterTypes.createError] || [])
 const normalizedMyTickets = computed(() => {
   const source = storeMyTickets.value.length ? storeMyTickets.value : myTickets
 
@@ -250,6 +262,24 @@ async function searchTicketByNumber() {
   })
 
   if (response?.data?.success) {
+    activeScreen.value = 'details'
+  }
+}
+
+async function submitCreateTicket() {
+  const response = await store.dispatch(ticketActionTypes.createTicket, {
+    userId: currentUser.value?.userId || '',
+    requestType: createTicketForm.value.requestType,
+    title: createTicketForm.value.title,
+    description: createTicketForm.value.description,
+    department: createTicketForm.value.department,
+    executionDate: createTicketForm.value.executionDate,
+    attachments: createTicketForm.value.attachments
+  })
+
+  if (response?.data?.success) {
+    searchQuery.value = response?.data?.data?.number || ''
+    submitBanner.value = 'Заявка создана и открыта в карточке.'
     activeScreen.value = 'details'
   }
 }
@@ -584,49 +614,54 @@ function formatTimelineTime(value) {
           <article class="content-card form-card">
             <label>
               Тип заявки
-              <select>
+              <select v-model="createTicketForm.requestType">
                 <option>Заявка в отдел ИТ</option>
                 <option>Маркетинговая заявка</option>
               </select>
             </label>
             <label>
               Краткая тема
-              <input type="text" value="Не открывается 1С на кассе" />
+              <input v-model="createTicketForm.title" type="text" />
             </label>
             <label>
               Подробное описание
-              <textarea rows="5">После обновления 1С не запускается на рабочем месте кассира. Нужна диагностика и восстановление работы.</textarea>
+              <textarea v-model="createTicketForm.description" rows="5"></textarea>
             </label>
             <label>
               Подразделение
-              <select>
+              <select v-model="createTicketForm.department">
                 <option>Отдел ИТ</option>
                 <option>Маркетинг</option>
               </select>
             </label>
             <label>
               Исполнить до
-              <input type="date" value="2026-04-11" />
+              <input v-model="createTicketForm.executionDate" type="date" />
             </label>
+
+            <p v-if="createErrors.length" class="status-pill rose">{{ createErrors[0] }}</p>
 
             <div class="upload-box">
               <div>
                 <strong>Вложения</strong>
                 <p>Скриншоты, фото, документы, голосовые сообщения.</p>
               </div>
-              <button class="secondary-button">Добавить файл</button>
+              <button class="secondary-button" disabled>Добавить файл</button>
             </div>
 
             <div class="chip-list">
-              <span class="file-chip">screenshot-1.png</span>
-              <span class="file-chip">error-log.pdf</span>
+              <span v-for="fileName in createTicketForm.attachments" :key="fileName" class="file-chip">{{ fileName }}</span>
             </div>
 
             <div class="hero-actions">
-              <button class="primary-button" @click="simulateSubmit('Заявка подготовлена и отправлена в ITILIUM.')">
-                Отправить заявку
+              <button
+                class="primary-button"
+                :disabled="isCreatingTicket || !createTicketForm.title || !createTicketForm.description"
+                @click="submitCreateTicket"
+              >
+                {{ isCreatingTicket ? 'Отправка...' : 'Отправить заявку' }}
               </button>
-              <button class="secondary-button" @click="openScreen('home')">Отмена</button>
+              <button class="secondary-button" :disabled="isCreatingTicket" @click="openScreen('home')">Отмена</button>
             </div>
           </article>
         </section>
