@@ -16,6 +16,7 @@ import {
 } from '@/store/modules/tickets'
 import MyTicketsScreen from '@/screens/MyTicketsScreen.vue'
 import ResponsibleTicketsScreen from '@/screens/ResponsibleTicketsScreen.vue'
+import SearchTicketScreen from '@/screens/SearchTicketScreen.vue'
 
 const store = useStore()
 
@@ -398,6 +399,10 @@ function setTicketsPage(page) {
   currentTicketsPage.value = page
 }
 
+function setSearchQuery(value) {
+  searchQuery.value = value
+}
+
 function resolveTicketTone(state) {
   switch (state) {
     case 'Зарегистрирована':
@@ -549,31 +554,15 @@ function formatTimelineTime(value) {
           @open-ticket-details="openTicketDetails"
         />
 
-        <section v-else-if="activeScreen === 'search'" class="screen">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Поиск</p>
-              <h2>Поиск заявки по номеру</h2>
-            </div>
-            <span class="status-pill info">Быстрый доступ к карточке</span>
-          </div>
-
-          <article class="content-card form-card">
-            <label>
-              Номер заявки
-              <input v-model="searchQuery" type="text" />
-            </label>
-            <p v-if="ticketErrors.length" class="status-pill rose">{{ ticketErrors[0] }}</p>
-            <div class="hero-actions">
-              <button class="primary-button" :disabled="isLoadingTicketDetails" @click="searchTicketByNumber">
-                {{ isLoadingTicketDetails ? 'Ищем заявку...' : 'Найти заявку' }}
-              </button>
-              <button class="secondary-button" :disabled="isLoadingTicketDetails" @click="openTicketDetails(searchQuery)">
-                Открыть карточку по номеру
-              </button>
-            </div>
-          </article>
-        </section>
+        <SearchTicketScreen
+          v-else-if="activeScreen === 'search'"
+          :search-query="searchQuery"
+          :ticket-errors="ticketErrors"
+          :is-loading-ticket-details="isLoadingTicketDetails"
+          @update:search-query="setSearchQuery"
+          @search-ticket="searchTicketByNumber"
+          @open-ticket-details="openTicketDetails(searchQuery)"
+        />
 
         <section v-else-if="activeScreen === 'details'" class="screen">
           <div class="section-header">
