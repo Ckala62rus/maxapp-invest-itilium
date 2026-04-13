@@ -14,6 +14,8 @@ import {
   actionTypes as ticketActionTypes,
   getterTypes as ticketGetterTypes
 } from '@/store/modules/tickets'
+import MyTicketsScreen from '@/screens/MyTicketsScreen.vue'
+import ResponsibleTicketsScreen from '@/screens/ResponsibleTicketsScreen.vue'
 
 const store = useStore()
 
@@ -528,89 +530,24 @@ function formatTimelineTime(value) {
           @open-screen="openScreen"
         />
 
-        <section v-else-if="activeScreen === 'myTickets'" class="screen">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Мои заявки</p>
-              <h2>История обращений</h2>
-            </div>
-            <span class="status-pill info">Пагинация готова</span>
-          </div>
+        <MyTicketsScreen
+          v-else-if="activeScreen === 'myTickets'"
+          :is-loading-my-tickets="isLoadingMyTickets"
+          :list-errors="listErrors"
+          :paginated-tickets="paginatedTickets"
+          :page-count="pageCount"
+          :current-tickets-page="currentTicketsPage"
+          @open-ticket-details="openTicketDetails"
+          @set-tickets-page="setTicketsPage"
+        />
 
-          <article v-if="isLoadingMyTickets" class="state-card">
-            <div class="spinner"></div>
-            <div>
-              <h3>Загружаем список</h3>
-              <p>Получаем ваши заявки из общего Vuex store и backend API.</p>
-            </div>
-          </article>
-
-          <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
-
-          <div v-else class="list-stack">
-            <article
-              v-for="ticket in paginatedTickets"
-              :key="ticket.number"
-              class="ticket-card"
-              @click="openTicketDetails(ticket.number)"
-            >
-              <div class="ticket-topline">
-                <strong>{{ ticket.number }}</strong>
-                <span class="status-pill" :class="ticket.tone">{{ ticket.state }}</span>
-              </div>
-              <h3>{{ ticket.title }}</h3>
-              <p>Срок реакции до {{ ticket.deadline }}</p>
-            </article>
-          </div>
-
-          <div v-if="pageCount > 1" class="pagination">
-            <button
-              v-for="page in pageCount"
-              :key="page"
-              class="page-button"
-              :class="{ active: page === currentTicketsPage }"
-              @click="setTicketsPage(page)"
-            >
-              {{ page }}
-            </button>
-          </div>
-        </section>
-
-        <section v-else-if="activeScreen === 'responsible'" class="screen">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Ответственность</p>
-              <h2>Заявки, закрепленные за мной</h2>
-            </div>
-            <span class="status-pill warning">Требуют реакции</span>
-          </div>
-
-          <article v-if="isLoadingResponsibleTickets" class="state-card">
-            <div class="spinner"></div>
-            <div>
-              <h3>Загружаем ответственность</h3>
-              <p>Получаем заявки, закрепленные за текущим пользователем.</p>
-            </div>
-          </article>
-
-          <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
-
-          <div v-else class="list-stack">
-            <article
-              v-for="ticket in normalizedResponsibleTickets"
-              :key="ticket.number"
-              class="ticket-card"
-              @click="openTicketDetails(ticket.number)"
-            >
-              <div class="ticket-topline">
-                <strong>{{ ticket.number }}</strong>
-                <span class="status-pill" :class="ticket.tone">{{ ticket.state }}</span>
-              </div>
-              <h3>{{ ticket.title }}</h3>
-              <p>Инициатор: {{ ticket.owner }}</p>
-            </article>
-          </div>
-        </section>
+        <ResponsibleTicketsScreen
+          v-else-if="activeScreen === 'responsible'"
+          :is-loading-responsible-tickets="isLoadingResponsibleTickets"
+          :list-errors="listErrors"
+          :normalized-responsible-tickets="normalizedResponsibleTickets"
+          @open-ticket-details="openTicketDetails"
+        />
 
         <section v-else-if="activeScreen === 'search'" class="screen">
           <div class="section-header">

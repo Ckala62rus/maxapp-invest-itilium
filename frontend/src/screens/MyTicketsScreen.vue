@@ -1,0 +1,86 @@
+<script setup>
+defineProps({
+  isLoadingMyTickets: {
+    type: Boolean,
+    required: true
+  },
+  listErrors: {
+    type: Array,
+    required: true
+  },
+  paginatedTickets: {
+    type: Array,
+    required: true
+  },
+  pageCount: {
+    type: Number,
+    required: true
+  },
+  currentTicketsPage: {
+    type: Number,
+    required: true
+  }
+})
+
+const emit = defineEmits(['open-ticket-details', 'set-tickets-page'])
+
+// The list screen keeps rendering concerns local and emits user intent upward
+// so App.vue still owns the shared pagination and ticket-loading flow.
+function openTicketDetails(ticketNumber) {
+  emit('open-ticket-details', ticketNumber)
+}
+
+function setTicketsPage(page) {
+  emit('set-tickets-page', page)
+}
+</script>
+
+<template>
+  <section class="screen">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Мои заявки</p>
+        <h2>История обращений</h2>
+      </div>
+      <span class="status-pill info">Пагинация готова</span>
+    </div>
+
+    <article v-if="isLoadingMyTickets" class="state-card">
+      <div class="spinner"></div>
+      <div>
+        <h3>Загружаем список</h3>
+        <p>Получаем ваши заявки из общего Vuex store и backend API.</p>
+      </div>
+    </article>
+
+    <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
+
+    <div v-else class="list-stack">
+      <article
+        v-for="ticket in paginatedTickets"
+        :key="ticket.number"
+        class="ticket-card"
+        @click="openTicketDetails(ticket.number)"
+      >
+        <div class="ticket-topline">
+          <strong>{{ ticket.number }}</strong>
+          <span class="status-pill" :class="ticket.tone">{{ ticket.state }}</span>
+        </div>
+        <h3>{{ ticket.title }}</h3>
+        <p>Срок реакции до {{ ticket.deadline }}</p>
+      </article>
+    </div>
+
+    <div v-if="pageCount > 1" class="pagination">
+      <button
+        v-for="page in pageCount"
+        :key="page"
+        class="page-button"
+        :class="{ active: page === currentTicketsPage }"
+        @click="setTicketsPage(page)"
+      >
+        {{ page }}
+      </button>
+    </div>
+  </section>
+</template>
