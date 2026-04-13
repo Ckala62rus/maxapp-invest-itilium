@@ -31,11 +31,24 @@ const activeScreen = ref('home')
 // The submission banner imitates the visual result of a completed action.
 const submitBanner = ref('')
 
-// The search field is static, but still behaves like a real form input.
+// The search field persists the current ticket number between list and search flows.
 const searchQuery = ref('SC-000245')
 
 // The current list page shows how pagination will look in the future app.
 const currentTicketsPage = ref(1)
+
+// The comment draft keeps the prototype form editable until comment actions move to API.
+const commentDraft = ref('Нужна срочная проверка после ночного обновления.')
+
+// The status form mirrors the backend transition contract used by the ticket card.
+const statusForm = ref({
+  state: '',
+  comment: '',
+  date: ''
+})
+
+// The responsible selector keeps the chosen ITILIUM assignee id before submit.
+const selectedResponsibleId = ref('')
 
 // The registration form keeps editable UI state while auth data lives in Vuex.
 const registrationForm = ref({
@@ -71,18 +84,11 @@ const responsibleTickets = [
   { number: 'SC-000299', title: 'Добавить комментарий по инциденту', state: 'На согласовании', owner: 'РЦ Казань', tone: 'purple' }
 ]
 
-// The detail timeline shows comments and audit entries on the ticket page.
-const ticketTimeline = [
-  { actor: 'Пользователь', text: 'Не могу открыть 1С на кассе после обновления.', time: '09:15' },
-  { actor: 'Система', text: 'Заявка зарегистрирована и отправлена в отдел ИТ.', time: '09:18' },
-  { actor: 'Ответственный', text: 'Проверяю обновление, вернусь с ответом через 10 минут.', time: '09:34' }
-]
-
 // The responsible selector demonstrates a future modal with paginated assignees.
 const responsiblePeople = [
-  { team: 'Отдел ИТ', person: 'Иван Петров', role: 'Старший инженер' },
-  { team: 'Отдел ИТ', person: 'Елена Орлова', role: 'Системный аналитик' },
-  { team: 'Маркетинг', person: 'Мария Соколова', role: 'Маркетолог' }
+  { team: 'Отдел ИТ', person: 'Иван Петров', role: 'Старший инженер', externalId: 'emp-1' },
+  { team: 'Отдел ИТ', person: 'Елена Орлова', role: 'Системный аналитик', externalId: 'emp-2' },
+  { team: 'Маркетинг', person: 'Мария Соколова', role: 'Маркетолог', externalId: 'emp-3' }
 ]
 
 // A computed slice is enough to show how page navigation will behave.
@@ -101,17 +107,31 @@ const isRegistrationSubmitting = computed(() => store.getters[authGetterTypes.is
 const authErrors = computed(() => store.getters[authGetterTypes.authError] || [])
 const storeMyTickets = computed(() => store.getters[ticketGetterTypes.myTickets] || [])
 const storeResponsibleTickets = computed(() => store.getters[ticketGetterTypes.responsibleTickets] || [])
+const selectedTicket = computed(() => store.getters[ticketGetterTypes.selectedTicket] || null)
+const responsibleOptions = computed(() => store.getters[ticketGetterTypes.responsibleOptions] || [])
 const isLoadingMyTickets = computed(() => store.getters[ticketGetterTypes.isLoadingMyTickets])
 const isLoadingResponsibleTickets = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleTickets])
-const ticketsErrors = computed(() => store.getters[ticketGetterTypes.ticketsError] || [])
+const isLoadingTicketDetails = computed(() => store.getters[ticketGetterTypes.isLoadingTicketDetails])
+const isLoadingResponsibleOptions = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleOptions])
+const isSubmittingComment = computed(() => store.getters[ticketGetterTypes.isSubmittingComment])
+const isChangingStatus = computed(() => store.getters[ticketGetterTypes.isChangingStatus])
+const isChangingResponsible = computed(() => store.getters[ticketGetterTypes.isChangingResponsible])
+const listErrors = computed(() => store.getters[ticketGetterTypes.listError] || [])
+const ticketErrors = computed(() => store.getters[ticketGetterTypes.ticketError] || [])
 const normalizedMyTickets = computed(() => {
-  return storeMyTickets.value.length ? storeMyTickets.value : myTickets
+  const source = storeMyTickets.value.length ? storeMyTickets.value : myTickets
+
+  return source.map((ticket) => ({
+    ...ticket,
+    tone: ticket.tone || resolveTicketTone(ticket.state)
+  }))
 })
 const normalizedResponsibleTickets = computed(() => {
   const source = storeResponsibleTickets.value.length ? storeResponsibleTickets.value : responsibleTickets
 
   return source.map((ticket) => ({
     ...ticket,
+    tone: ticket.tone || resolveTicketTone(ticket.state),
     owner: ticket.owner || ticket.responsibleTeam || 'Не указано'
   }))
 })
@@ -142,6 +162,26 @@ const profileRegion = computed(() => {
 
   return parts[parts.length - 1].trim()
 })
+const detailStatusTone = computed(() => {
+  return resolveTicketTone(selectedTicket.value?.state)
+})
+const availableStatusOptions = computed(() => {
+  return selectedTicket.value?.availableStates || []
+})
+const availableResponsibleOptions = computed(() => {
+  return responsibleOptions.value.length ? responsibleOptions.value : responsiblePeople
+})
+const selectedTicketTimeline = computed(() => {
+  if (!selectedTicket.value?.timeline?.length) {
+    return []
+  }
+
+  return selectedTicket.value.timeline.map((item) => ({
+    actor: item.author || item.actor || 'Система',
+    text: item.message || item.text || '',
+    time: formatTimelineTime(item.createdAt || item.time || '')
+  }))
+})
 
 // When the profile changes, the registration form is prefilled from the same source
 // so the user does not re-enter obvious data during the MAX onboarding flow.
@@ -152,6 +192,22 @@ watch(currentUser, (user) => {
     department: user?.department || '',
     phone: registrationForm.value.phone || '+7 (999) 123-45-67',
     comment: registrationForm.value.comment || 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
+  }
+}, { immediate: true })
+
+// When a new detail payload arrives, derived forms stay in sync with the same
+// Vuex source of truth instead of preserving stale values from the previous ticket.
+watch(selectedTicket, async (ticket) => {
+  commentDraft.value = 'Нужна срочная проверка после ночного обновления.'
+  selectedResponsibleId.value = ''
+  statusForm.value = {
+    state: ticket?.availableStates?.[0] || '',
+    comment: '',
+    date: ticket?.deadline || ''
+  }
+
+  if (ticket?.number && ticket.canChangeResponsible) {
+    await store.dispatch(ticketActionTypes.loadResponsibleOptions, ticket.number)
   }
 }, { immediate: true })
 
@@ -168,9 +224,10 @@ function openScreen(screenId) {
 }
 
 // This helper simulates navigation from list card to detail page.
-function openTicketDetails(ticketNumber) {
+async function openTicketDetails(ticketNumber) {
   searchQuery.value = ticketNumber
   activeScreen.value = 'details'
+  await store.dispatch(ticketActionTypes.loadTicketDetails, ticketNumber)
 }
 
 // This helper only changes UI feedback for the visual prototype.
@@ -178,9 +235,86 @@ function simulateSubmit(message) {
   submitBanner.value = message
 }
 
-// This helper simulates the search result flow.
-function simulateSearch() {
-  activeScreen.value = 'details'
+// Search now goes through the dedicated backend endpoint so the details screen
+// can open from either a manual search or a list click using shared Vuex state.
+async function searchTicketByNumber() {
+  const number = searchQuery.value.trim()
+
+  if (!number) {
+    return
+  }
+
+  const response = await store.dispatch(ticketActionTypes.searchTicket, {
+    number,
+    userId: currentUser.value?.userId || ''
+  })
+
+  if (response?.data?.success) {
+    activeScreen.value = 'details'
+  }
+}
+
+async function submitComment() {
+  if (!selectedTicket.value?.number || !commentDraft.value.trim()) {
+    return
+  }
+
+  const response = await store.dispatch(ticketActionTypes.addComment, {
+    number: selectedTicket.value.number,
+    data: {
+      userId: currentUser.value?.userId || '',
+      message: commentDraft.value.trim(),
+      attachments: []
+    }
+  })
+
+  if (response?.data?.success) {
+    commentDraft.value = ''
+    submitBanner.value = 'Комментарий отправлен и карточка заявки обновлена.'
+  }
+}
+
+async function submitStatusChange() {
+  if (!selectedTicket.value?.number || !statusForm.value.state) {
+    return
+  }
+
+  const response = await store.dispatch(ticketActionTypes.changeStatus, {
+    number: selectedTicket.value.number,
+    data: {
+      userId: currentUser.value?.userId || '',
+      state: statusForm.value.state,
+      comment: statusForm.value.comment,
+      date: statusForm.value.date
+    }
+  })
+
+  if (response?.data?.success) {
+    submitBanner.value = 'Статус заявки обновлен.'
+  }
+}
+
+async function assignResponsible(responsibleId) {
+  if (!selectedTicket.value?.number || !responsibleId) {
+    return
+  }
+
+  selectedResponsibleId.value = responsibleId
+
+  const response = await store.dispatch(ticketActionTypes.changeResponsible, {
+    number: selectedTicket.value.number,
+    data: {
+      userId: currentUser.value?.userId || '',
+      responsibleId
+    }
+  })
+
+  if (response?.data?.success) {
+    submitBanner.value = 'Ответственный по заявке обновлен.'
+    return
+  }
+
+  selectedResponsibleId.value = ''
 }
 
 // Registration now goes through the shared auth module so the UI already uses
@@ -204,6 +338,42 @@ async function submitRegistration() {
 // This helper changes the pager while keeping the prototype deterministic.
 function setTicketsPage(page) {
   currentTicketsPage.value = page
+}
+
+function resolveTicketTone(state) {
+  switch (state) {
+    case 'Зарегистрирована':
+      return 'blue'
+    case 'В работе':
+      return 'amber'
+    case 'На согласовании':
+      return 'purple'
+    case 'Закрыта':
+      return 'green'
+    case 'Отложена':
+      return 'slate'
+    case 'Ожидает ответа':
+      return 'amber'
+    default:
+      return 'info'
+  }
+}
+
+function formatTimelineTime(value) {
+  if (!value) {
+    return ''
+  }
+
+  const parsedDate = new Date(value)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value
+  }
+
+  return parsedDate.toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 </script>
 
@@ -478,7 +648,7 @@ function setTicketsPage(page) {
             </div>
           </article>
 
-          <p v-else-if="ticketsErrors.length" class="status-pill rose">{{ ticketsErrors[0] }}</p>
+          <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
 
           <div v-else class="list-stack">
             <article
@@ -526,7 +696,7 @@ function setTicketsPage(page) {
             </div>
           </article>
 
-          <p v-else-if="ticketsErrors.length" class="status-pill rose">{{ ticketsErrors[0] }}</p>
+          <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
 
           <div v-else class="list-stack">
             <article
@@ -559,9 +729,14 @@ function setTicketsPage(page) {
               Номер заявки
               <input v-model="searchQuery" type="text" />
             </label>
+            <p v-if="ticketErrors.length" class="status-pill rose">{{ ticketErrors[0] }}</p>
             <div class="hero-actions">
-              <button class="primary-button" @click="simulateSearch">Найти заявку</button>
-              <button class="secondary-button" @click="openScreen('details')">Открыть демо-карточку</button>
+              <button class="primary-button" :disabled="isLoadingTicketDetails" @click="searchTicketByNumber">
+                {{ isLoadingTicketDetails ? 'Ищем заявку...' : 'Найти заявку' }}
+              </button>
+              <button class="secondary-button" :disabled="isLoadingTicketDetails" @click="openTicketDetails(searchQuery)">
+                Открыть карточку по номеру
+              </button>
             </div>
           </article>
         </section>
@@ -570,43 +745,69 @@ function setTicketsPage(page) {
           <div class="section-header">
             <div>
               <p class="eyebrow">Карточка заявки</p>
-              <h2>{{ searchQuery }}</h2>
+              <h2>{{ selectedTicket?.number || searchQuery }}</h2>
             </div>
-            <span class="status-pill amber">В работе</span>
+            <span class="status-pill" :class="detailStatusTone">{{ selectedTicket?.state || 'info' }}</span>
           </div>
 
-          <article class="content-card">
-            <div class="details-grid">
-              <div>
-                <span>Краткая тема</span>
-                <strong>Не открывается 1С на кассе</strong>
-              </div>
-              <div>
-                <span>Ответственная команда</span>
-                <strong>Отдел ИТ</strong>
-              </div>
-              <div>
-                <span>Срок</span>
-                <strong>11.04.2026</strong>
-              </div>
-              <div>
-                <span>Можно сменить ответственного</span>
-                <strong>Да</strong>
-              </div>
-            </div>
-
-            <div class="action-grid">
-              <button class="secondary-button">Добавить комментарий</button>
-              <button class="secondary-button">Поменять статус</button>
-              <button class="secondary-button">Сменить ответственного</button>
-              <button class="secondary-button">Оценить решение</button>
+          <article v-if="isLoadingTicketDetails" class="state-card">
+            <div class="spinner"></div>
+            <div>
+              <h3>Загружаем карточку</h3>
+              <p>Получаем полную информацию о заявке и ее ленту событий из backend API.</p>
             </div>
           </article>
 
-          <article class="content-card">
+          <article v-else-if="ticketErrors.length" class="content-card">
+            <h3>Заявку не удалось открыть</h3>
+            <p>{{ ticketErrors[0] }}</p>
+            <div class="hero-actions">
+              <button class="primary-button" @click="openScreen('search')">Вернуться к поиску</button>
+            </div>
+          </article>
+
+          <article v-else-if="selectedTicket" class="content-card">
+            <div class="details-grid">
+              <div>
+                <span>Краткая тема</span>
+                <strong>{{ selectedTicket.title }}</strong>
+              </div>
+              <div>
+                <span>Ответственная команда</span>
+                <strong>{{ selectedTicket.responsibleTeam }}</strong>
+              </div>
+              <div>
+                <span>Срок</span>
+                <strong>{{ selectedTicket.deadline }}</strong>
+              </div>
+              <div>
+                <span>Можно сменить ответственного</span>
+                <strong>{{ selectedTicket.canChangeResponsible ? 'Да' : 'Нет' }}</strong>
+              </div>
+            </div>
+
+            <div class="content-card compact">
+              <span>Описание</span>
+              <p>{{ selectedTicket.description }}</p>
+            </div>
+
+            <div class="action-grid">
+              <button class="secondary-button" :disabled="isSubmittingComment">Добавить комментарий</button>
+              <button class="secondary-button" :disabled="isChangingStatus">Поменять статус</button>
+              <button class="secondary-button" :disabled="isChangingResponsible">Сменить ответственного</button>
+              <button class="secondary-button" disabled>Оценить решение</button>
+            </div>
+          </article>
+
+          <article v-else class="content-card">
+            <h3>Карточка пока не выбрана</h3>
+            <p>Открой заявку из списка или найдите ее по номеру, чтобы загрузить детали из Vuex store.</p>
+          </article>
+
+          <article v-if="selectedTicket" class="content-card">
             <h3>Лента событий</h3>
             <div class="timeline">
-              <div v-for="item in ticketTimeline" :key="`${item.actor}-${item.time}`" class="timeline-item">
+              <div v-for="item in selectedTicketTimeline" :key="`${item.actor}-${item.time}-${item.text}`" class="timeline-item">
                 <strong>{{ item.actor }}</strong>
                 <p>{{ item.text }}</p>
                 <span>{{ item.time }}</span>
@@ -614,31 +815,80 @@ function setTicketsPage(page) {
             </div>
           </article>
 
-          <article class="content-card">
+          <article v-if="selectedTicket" class="content-card">
             <h3>Новый комментарий</h3>
             <div class="form-card compact">
               <label>
                 Текст комментария
-                <textarea rows="4">Нужна срочная проверка после ночного обновления.</textarea>
+                <textarea v-model="commentDraft" rows="4"></textarea>
               </label>
               <div class="hero-actions">
-                <button class="primary-button" @click="simulateSubmit('Комментарий отправлен, ответ ITILIUM получен.')">
-                  Отправить комментарий
+                <button
+                  class="primary-button"
+                  :disabled="isSubmittingComment || !commentDraft.trim()"
+                  @click="submitComment"
+                >
+                  {{ isSubmittingComment ? 'Отправляем...' : 'Отправить комментарий' }}
                 </button>
-                <button class="secondary-button">Прикрепить файл</button>
+                <button class="secondary-button" disabled>Прикрепить файл</button>
               </div>
             </div>
           </article>
 
-          <article class="content-card">
+          <article v-if="selectedTicket" class="content-card">
+            <h3>Смена статуса</h3>
+            <div class="form-card compact">
+              <label>
+                Новый статус
+                <select v-model="statusForm.state">
+                  <option disabled value="">Выберите статус</option>
+                  <option v-for="status in availableStatusOptions" :key="status" :value="status">
+                    {{ status }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                Комментарий к переходу
+                <textarea v-model="statusForm.comment" rows="3"></textarea>
+              </label>
+              <label>
+                Дата исполнения
+                <input v-model="statusForm.date" type="text" />
+              </label>
+              <div class="hero-actions">
+                <button
+                  class="primary-button"
+                  :disabled="isChangingStatus || !statusForm.state"
+                  @click="submitStatusChange"
+                >
+                  {{ isChangingStatus ? 'Сохраняем...' : 'Сменить статус' }}
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <article v-if="selectedTicket" class="content-card">
             <h3>Выбор нового ответственного</h3>
-            <div class="selector-list">
-              <div v-for="person in responsiblePeople" :key="person.person" class="selector-item">
+            <article v-if="isLoadingResponsibleOptions" class="state-card compact">
+              <div class="spinner"></div>
+              <div>
+                <h3>Загружаем список</h3>
+                <p>Получаем доступных ответственных для этой заявки.</p>
+              </div>
+            </article>
+            <div v-else class="selector-list">
+              <div v-for="person in availableResponsibleOptions" :key="person.externalId || person.person" class="selector-item">
                 <div>
                   <strong>{{ person.person }}</strong>
                   <p>{{ person.team }} · {{ person.role }}</p>
                 </div>
-                <button class="ghost-button">Выбрать</button>
+                <button
+                  class="ghost-button"
+                  :disabled="isChangingResponsible"
+                  @click="assignResponsible(person.externalId)"
+                >
+                  {{ isChangingResponsible && selectedResponsibleId === person.externalId ? 'Сохраняем...' : 'Выбрать' }}
+                </button>
               </div>
             </div>
           </article>

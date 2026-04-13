@@ -21,9 +21,33 @@ const getTicketDetails = (number) => {
   return axios.get(urls.ticketDetails(number))
 }
 
+// addComment submits a new comment and returns the refreshed ticket detail.
+const addComment = (number, payload) => {
+  return axios.post(urls.ticketComments(number), payload)
+}
+
+// changeStatus submits a workflow transition and returns the refreshed ticket detail.
+const changeStatus = (number, payload) => {
+  return axios.post(urls.ticketStatus(number), payload)
+}
+
+// listResponsibleOptions loads assignable people for the ticket card.
+const listResponsibleOptions = (number) => {
+  return axios.get(urls.ticketResponsibles(number))
+}
+
+// changeResponsible submits a new assignee and returns the refreshed ticket detail.
+const changeResponsible = (number, payload) => {
+  return axios.post(urls.ticketResponsible(number), payload)
+}
+
 export default {
   listMyTickets,
   listResponsibleTickets,
   searchTicket,
-  getTicketDetails
+  getTicketDetails,
+  addComment,
+  changeStatus,
+  listResponsibleOptions,
+  changeResponsible
 }
