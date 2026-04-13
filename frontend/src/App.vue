@@ -1,23 +1,16 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useStore } from 'vuex'
 
-import {
-  actionTypes as authActionTypes,
-  getterTypes as authGetterTypes
-} from '@/store/modules/auth'
 import HomeScreen from '@/screens/HomeScreen.vue'
 import ProfileScreen from '@/screens/ProfileScreen.vue'
 import RegistrationScreen from '@/screens/RegistrationScreen.vue'
 import CreateTicketScreen from '@/screens/CreateTicketScreen.vue'
-import {
-  actionTypes as ticketActionTypes,
-  getterTypes as ticketGetterTypes
-} from '@/store/modules/tickets'
 import MyTicketsScreen from '@/screens/MyTicketsScreen.vue'
 import ResponsibleTicketsScreen from '@/screens/ResponsibleTicketsScreen.vue'
 import SearchTicketScreen from '@/screens/SearchTicketScreen.vue'
 import TicketDetailsScreen from '@/screens/TicketDetailsScreen.vue'
+import { useAuthFlow } from '@/composables/useAuthFlow'
 import { useTicketFlow } from '@/composables/useTicketFlow'
 
 const store = useStore()
@@ -40,46 +33,20 @@ const activeScreen = ref('home')
 // The submission banner imitates the visual result of a completed action.
 const submitBanner = ref('')
 
-// The registration form keeps editable UI state while auth data lives in Vuex.
-const registrationForm = ref({
-  employeeNumber: '004512',
-  fullName: '',
-  department: '',
-  phone: '+7 (999) 123-45-67',
-  comment: 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
-})
-
-// Store-backed auth state lets the profile and registration screens
-// use the same data flow that future real screens will rely on.
-const currentUser = computed(() => store.getters[authGetterTypes.user] || null)
-const isRegistrationSubmitting = computed(() => store.getters[authGetterTypes.isSubmitting])
-const authErrors = computed(() => store.getters[authGetterTypes.authError] || [])
-const profileInitials = computed(() => {
-  const fullName = currentUser.value?.fullName || 'MAX Пользователь'
-
-  return fullName
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((item) => item[0])
-    .join('')
-    .toUpperCase()
-})
-const profileStatusText = computed(() => {
-  return currentUser.value?.employeeFound
-    ? 'Пользователь найден и связан с ITILIUM'
-    : 'Не найден, нужна регистрация'
-})
-const profileRegion = computed(() => {
-  const department = currentUser.value?.department || ''
-
-  if (!department) {
-    return 'Не определено'
-  }
-
-  const parts = department.split(',')
-
-  return parts[parts.length - 1].trim()
+const {
+  registrationForm,
+  currentUser,
+  isRegistrationSubmitting,
+  authErrors,
+  profileInitials,
+  profileStatusText,
+  profileRegion,
+  loadAuthProfile,
+  submitRegistration
+} = useAuthFlow({
+  store,
+  activeScreen,
+  submitBanner
 })
 
 const {
@@ -139,7 +106,7 @@ watch(currentUser, (user) => {
 }, { immediate: true })
 
 onMounted(() => {
-  store.dispatch(authActionTypes.me)
+  loadAuthProfile()
   loadTicketLists()
 })
 
@@ -147,29 +114,6 @@ onMounted(() => {
 function openScreen(screenId) {
   activeScreen.value = screenId
   submitBanner.value = ''
-}
-
-// This helper only changes UI feedback for the visual prototype.
-function simulateSubmit(message) {
-  submitBanner.value = message
-}
-
-// Registration now goes through the shared auth module so the UI already uses
-// the same request lifecycle that future componentized screens will reuse.
-async function submitRegistration() {
-  const response = await store.dispatch(authActionTypes.register, {
-    userId: currentUser.value?.userId || '',
-    employeeNumber: registrationForm.value.employeeNumber,
-    fullName: registrationForm.value.fullName,
-    department: registrationForm.value.department,
-    phone: registrationForm.value.phone,
-    comment: registrationForm.value.comment
-  })
-
-  if (response?.data?.success) {
-    submitBanner.value = 'Регистрационная форма отправлена на проверку.'
-    activeScreen.value = 'profile'
-  }
 }
 
 </script>
