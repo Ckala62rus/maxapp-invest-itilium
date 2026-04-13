@@ -1,52 +1,63 @@
-# ITILIUM API Integration
+# ITILIUM API в проекте
 
-## Purpose
-This document consolidates the ITILIUM integration contract used by the current Go backend and the legacy example integration from `example/`.
+## Назначение
+Этот документ собирает в одном месте:
 
-It is intended to answer:
-- which URL and credentials are used
-- which request parameters are sent
-- which field types are expected
-- how the current backend facade maps to legacy ITILIUM endpoints
+- текущий контракт backend facade в этом проекте
+- legacy-интеграцию из `example`
+- реальные URL, параметры и структуры данных, которые нужно учитывать при подключении к тестовому ITILIUM
 
-## Configuration
+Документ отвечает на вопросы:
 
-Current backend integration reads ITILIUM settings from environment variables via `internal/config/config.go`:
+- какой базовый URL и какие переменные окружения используются
+- какие параметры и в каком формате отправляются
+- какие типы данных ожидаются на входе и выходе
+- как текущий backend facade соотносится со старой aiogram-интеграцией
 
-- `ITILIUM_BASE_URL` - current Go backend outbound base URL
-- `ITILIUM_LOGIN` - Basic Auth login
-- `ITILIUM_PASSWORD` - Basic Auth password
-- `ITILIUM_TIMEOUT` - outbound timeout
+## Конфигурация
 
-Legacy example integration in `example/telegram_bot_itilium/.env` uses:
+Текущий Go backend читает настройки ITILIUM через `internal/config/config.go`:
+
+- `ITILIUM_BASE_URL` - базовый URL ITILIUM для outbound-запросов backend
+- `ITILIUM_LOGIN` - логин Basic Auth
+- `ITILIUM_PASSWORD` - пароль Basic Auth
+- `ITILIUM_TIMEOUT` - timeout внешнего запроса
+
+В legacy-примере `example/telegram_bot_itilium/.env` используются:
 
 - `ITILIUM_URL`
 - `ITILIUM_TEST_URL`
 - `ITILIUM_LOGIN`
 - `ITILIUM_PASSWORD`
 
-Important:
-- test credentials exist in `example`, but must not be copied into committed project files
-- the current project should receive them through local runtime config only
+Безопасно подтвержденный тестовый URL из aiogram `.env`:
 
-## Current Backend Facade
+- `https://inv-vsrv-1c.bars.ryazan.ru/itilium-test/hs/TelegramNew/`
 
-The frontend does not call raw ITILIUM endpoints directly. It calls the Go backend facade under `/api/v1/...`, and the backend translates these calls into outbound ITILIUM requests through `internal/api/itilium_client.go`.
+Важно:
 
-### Authentication and user identity in current backend
+- тестовый URL можно использовать как reference для локальной настройки
+- логин и пароль существуют в `example/telegram_bot_itilium/.env`, но не должны переноситься в коммитируемую документацию как открытые секреты
+- в рабочем проекте эти значения должны задаваться только через локальный runtime config / environment variables
 
-Today the backend gets the acting user id from:
+## Текущий backend facade
 
-- request header `X-User-ID`, or
-- query parameter `userId`
+Фронтенд не ходит напрямую в raw ITILIUM endpoints. Он вызывает backend facade вида `/api/v1/...`, а backend уже преобразует эти вызовы в outbound HTTP-запросы через `internal/api/itilium_client.go`.
 
-This behavior is implemented in `internal/middleware/identity.go`.
+### Аутентификация и идентификация пользователя в текущем состоянии
 
-This is currently a transitional mechanism. For MAX Mini App production flow, the user id must come from validated MAX init data rather than from a client-provided header/query param.
+Сейчас backend получает acting user id из:
 
-## Current Project API Contract
+- заголовка `X-User-ID`, или
+- query-параметра `userId`
 
-All frontend-facing JSON responses are wrapped in:
+Это реализовано в `internal/middleware/identity.go`.
+
+Это временный переходный механизм. Для корректного MAX Mini App production flow user id должен браться не из доверия к заголовку/параметру клиента, а из валидированного MAX init data / token payload.
+
+## Контракт текущего project API
+
+Все JSON-ответы backend во фронтенд завернуты в общий envelope:
 
 ```json
 {
@@ -59,13 +70,15 @@ All frontend-facing JSON responses are wrapped in:
 
 ### `GET /api/v1/users/me`
 
-Purpose:
-- get current MAX user profile resolved for ITILIUM integration
+Назначение:
 
-Identity source:
-- middleware context user id
+- получить профиль текущего MAX-пользователя, уже приведенный к формату проекта
 
-Response `data` type: `UserProfile`
+Источник identity:
+
+- `user_id` из middleware context
+
+Тип `data` в ответе: `UserProfile`
 
 ```json
 {
@@ -80,10 +93,11 @@ Response `data` type: `UserProfile`
 
 ### `POST /api/v1/users/register`
 
-Purpose:
-- register/link a user that was not found in ITILIUM
+Назначение:
 
-Request `data` type: `RegistrationRequest`
+- зарегистрировать или привязать пользователя, которого не нашли в ITILIUM
+
+Тип request `data`: `RegistrationRequest`
 
 ```json
 {
@@ -96,17 +110,19 @@ Request `data` type: `RegistrationRequest`
 }
 ```
 
-Response `data` type: `UserProfile`
+Тип `data` в ответе: `UserProfile`
 
 ### `GET /api/v1/tickets`
 
-Purpose:
-- list current user's own tickets
+Назначение:
 
-Identity source:
-- middleware context user id
+- получить список собственных заявок текущего пользователя
 
-Response `data` type: `TicketSummary[]`
+Источник identity:
+
+- `user_id` из middleware context
+
+Тип `data` в ответе: `TicketSummary[]`
 
 ```json
 [
@@ -122,20 +138,23 @@ Response `data` type: `TicketSummary[]`
 
 ### `GET /api/v1/tickets/responsible`
 
-Purpose:
-- list tickets where current user is the responsible person
+Назначение:
 
-Identity source:
-- middleware context user id
+- получить список заявок, где текущий пользователь является ответственным
 
-Response `data` type: `TicketSummary[]`
+Источник identity:
+
+- `user_id` из middleware context
+
+Тип `data` в ответе: `TicketSummary[]`
 
 ### `POST /api/v1/tickets/search`
 
-Purpose:
-- search one ticket by number
+Назначение:
 
-Request `data` type: `SearchTicketRequest`
+- найти одну заявку по номеру
+
+Тип request `data`: `SearchTicketRequest`
 
 ```json
 {
@@ -144,14 +163,15 @@ Request `data` type: `SearchTicketRequest`
 }
 ```
 
-Response `data` type: `TicketDetail`
+Тип `data` в ответе: `TicketDetail`
 
 ### `POST /api/v1/tickets`
 
-Purpose:
-- create a new ticket
+Назначение:
 
-Request `data` type: `CreateTicketRequest`
+- создать новую заявку
+
+Тип request `data`: `CreateTicketRequest`
 
 ```json
 {
@@ -165,17 +185,19 @@ Request `data` type: `CreateTicketRequest`
 }
 ```
 
-Response `data` type: `TicketDetail`
+Тип `data` в ответе: `TicketDetail`
 
 ### `GET /api/v1/tickets/{number}`
 
-Purpose:
-- load full ticket details by number
+Назначение:
 
-Identity source:
-- middleware context user id
+- загрузить полную карточку заявки по номеру
 
-Response `data` type: `TicketDetail`
+Источник identity:
+
+- `user_id` из middleware context
+
+Тип `data` в ответе: `TicketDetail`
 
 ```json
 {
@@ -199,10 +221,11 @@ Response `data` type: `TicketDetail`
 
 ### `POST /api/v1/tickets/{number}/comments`
 
-Purpose:
-- add a comment to a ticket
+Назначение:
 
-Request `data` type: `AddCommentRequest`
+- добавить комментарий к заявке
+
+Тип request `data`: `AddCommentRequest`
 
 ```json
 {
@@ -212,14 +235,15 @@ Request `data` type: `AddCommentRequest`
 }
 ```
 
-Response `data` type: `TicketDetail`
+Тип `data` в ответе: `TicketDetail`
 
 ### `POST /api/v1/tickets/{number}/status`
 
-Purpose:
-- change ticket status
+Назначение:
 
-Request `data` type: `ChangeStatusRequest`
+- сменить статус заявки
+
+Тип request `data`: `ChangeStatusRequest`
 
 ```json
 {
@@ -230,17 +254,19 @@ Request `data` type: `ChangeStatusRequest`
 }
 ```
 
-Response `data` type: `TicketDetail`
+Тип `data` в ответе: `TicketDetail`
 
 ### `GET /api/v1/tickets/{number}/responsibles`
 
-Purpose:
-- list available assignees for a ticket
+Назначение:
 
-Identity source:
-- middleware context user id
+- получить список доступных ответственных по заявке
 
-Response `data` type: `ResponsibleOption[]`
+Источник identity:
+
+- `user_id` из middleware context
+
+Тип `data` в ответе: `ResponsibleOption[]`
 
 ```json
 [
@@ -255,10 +281,11 @@ Response `data` type: `ResponsibleOption[]`
 
 ### `POST /api/v1/tickets/{number}/responsible`
 
-Purpose:
-- assign a new responsible person
+Назначение:
 
-Request `data` type: `ChangeResponsibleRequest`
+- назначить нового ответственного
+
+Тип request `data`: `ChangeResponsibleRequest`
 
 ```json
 {
@@ -267,13 +294,13 @@ Request `data` type: `ChangeResponsibleRequest`
 }
 ```
 
-Response `data` type: `TicketDetail`
+Тип `data` в ответе: `TicketDetail`
 
-## Legacy ITILIUM Endpoints From `example`
+## Legacy ITILIUM endpoints из `example`
 
-The old aiogram integration calls raw ITILIUM endpoints directly. Those endpoints are still useful as source-of-truth for real parameter naming and migration mapping.
+Старый aiogram-проект ходит в raw ITILIUM endpoints напрямую. Эти endpoints важны как source of truth для реальных названий параметров и для маппинга при миграции.
 
-### Identity lookup
+### Поиск пользователя / идентификация
 
 #### `POST find_employee`
 
@@ -281,15 +308,16 @@ Form parameters:
 - `telegram: int`
 - or another identifier field when `attribute_code` is overridden
 
-Used response fields:
+Используемые поля ответа:
 - `UUID: string`
 - `servicecalls: string[]`
 - `canCreateMarketingRequests: bool`
 
-Migration note:
-- `telegram` must be replaced with a validated MAX user identifier
+Замечание по миграции:
 
-### Regular service calls
+- параметр `telegram` должен быть заменен на валидированный MAX user id
+
+### Обычные Service Call заявки
 
 #### `POST create_sc`
 
@@ -305,7 +333,7 @@ Query parameters:
 - `telegram: int`
 - `sc_number: string`
 
-Used response fields:
+Используемые поля ответа:
 - `number: string`
 - `shortDescription: string`
 - `state: string`
@@ -346,7 +374,7 @@ Query parameters:
 - `telegram: int`
 - `sc_number: string`
 
-Used response shape:
+Используемая структура ответа:
 
 ```json
 [
@@ -370,9 +398,9 @@ Query parameters:
 - `inc_number: string`
 - `responsibleEmployeeId: string`
 
-### Related but not yet migrated
+### Связанные endpoints, которые еще не перенесены
 
-These endpoints exist in the example but are not yet implemented in the current Go backend facade:
+Эти endpoints есть в `example`, но в текущем Go backend facade пока не реализованы:
 
 - `POST confirm_sc`
 - `POST vote_change`
@@ -380,11 +408,11 @@ These endpoints exist in the example but are not yet implemented in the current 
 - `GET /listSubdivisionMarketing`
 - `POST create_sc_Marketing`
 
-## Mapping: Current Backend Facade -> Legacy ITILIUM
+## Маппинг: текущий backend facade -> legacy ITILIUM
 
-| Current backend route | Current request type | Legacy/example ITILIUM shape |
+| Текущий backend route | Текущий тип запроса | Legacy/example ITILIUM endpoint |
 |---|---|---|
-| `GET /api/v1/tickets` | context user id | list from employee/telegram-linked identity |
+| `GET /api/v1/tickets` | context user id | список заявок пользователя по identity |
 | `GET /api/v1/tickets/responsible` | context user id | `list_sc_responsible?telegram=...` + ticket detail enrichment |
 | `POST /api/v1/tickets/search` | `{ number, userId }` | `find_sc?telegram=...&sc_number=...` |
 | `POST /api/v1/tickets` | `CreateTicketRequest` | `create_sc` |
@@ -393,20 +421,20 @@ These endpoints exist in the example but are not yet implemented in the current 
 | `GET /api/v1/tickets/{number}/responsibles` | context user id | `responsibles_sc?telegram=...&sc_number=...` |
 | `POST /api/v1/tickets/{number}/responsible` | `ChangeResponsibleRequest` | `change_responsible_sc?...` |
 
-## Identity Migration Rule
+## Правило миграции identity
 
-Until MAX init data validation is implemented, the project still uses a manually supplied `userId`.
+Пока MAX init data validation не реализован, проект использует временный `userId`, переданный клиентом.
 
-Target rule:
+Целевая схема:
 
-- do not trust `X-User-ID` / raw `userId` from the client as the final production solution
-- validate MAX init data on the backend
-- extract real MAX user id from validated/decrypted token data
-- pass that MAX user id further to profile resolution and ITILIUM requests
-- for the migration period, this MAX user id replaces the Telegram user id used in the legacy bot
+- не доверять `X-User-ID` / raw `userId` от клиента как production-решению
+- валидировать MAX init data на backend
+- извлекать реальный MAX user id из проверенного/расшифрованного токена
+- передавать именно этот MAX user id дальше в profile resolution и ITILIUM requests
+- на переходном этапе этот MAX user id заменяет Telegram user id из legacy-бота
 
-## Notes
+## Дополнительные замечания
 
-- Current Go client uses JSON bodies for the internal project API layer and Basic Auth for outbound ITILIUM requests.
-- Legacy aiogram example uses many form/query-based calls to raw ITILIUM endpoints.
-- When connecting to the real test server, verify field naming carefully because legacy ITILIUM names are not always consistent, for example `shorDescription`.
+- текущий Go client использует JSON body на внутреннем API-слое проекта и Basic Auth для outbound ITILIUM
+- legacy aiogram-интеграция использует много form/query-based вызовов в raw ITILIUM
+- при подключении к реальному test server нужно отдельно сверять naming полей, потому что legacy ITILIUM названия не всегда консистентны, например `shorDescription`

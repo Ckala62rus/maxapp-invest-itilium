@@ -1,154 +1,159 @@
-# MAX Identity Integration Plan
+# План интеграции identity из MAX
 
-## Why This Plan Is Needed
+## Зачем нужен этот план
 
-The current project still uses a temporary identity mechanism:
+Сейчас проект все еще использует временную схему identity:
 
-- backend reads `X-User-ID` or `userId`
-- frontend sends `userId` in requests
-- the same `userId` is then passed into ITILIUM calls
+- backend читает `X-User-ID` или `userId`
+- frontend передает `userId` в запросах
+- этот же `userId` потом уходит дальше в ITILIUM
 
-This is acceptable only as a migration stub.
+Это допустимо только как временный migration stub.
 
-For real verification that the client is a real MAX user, the Mini App must:
+Чтобы действительно понимать, что клиентом является реальный пользователь MAX, Mini App должен:
 
-- load the real MAX JavaScript library in HTML
-- receive signed/encrypted init data from MAX runtime
-- send that init data to the backend
-- validate and decrypt it on the backend using the application token/secret
-- extract the real MAX user identifier from the validated payload
-- use that identifier as the acting user id for ITILIUM
+- подключать реальную JavaScript-библиотеку MAX в HTML
+- получать signed/encrypted init data из среды MAX
+- отправлять init data на backend
+- валидировать и расшифровывать payload на backend с использованием токена/секрета приложения
+- извлекать реальный MAX user identifier
+- использовать этот идентификатор как acting user id для profile flow и ITILIUM
 
-## Current Status
+## Текущее состояние
 
-What is already present:
+Что уже есть:
 
-- frontend and backend flows are ready to work with a single external user id
-- profile, registration and ticket flows already pass `userId` through business logic
-- boot flow docs already mention `ValidateMaxInitData`
+- frontend и backend сценарии уже готовы работать с единым внешним user id
+- profile, registration и ticket flow уже протаскивают `userId` через бизнес-логику
+- в документации boot flow уже фигурирует шаг `ValidateMaxInitData`
 
-What is not implemented yet:
+Что еще не реализовано:
 
-- real MAX JS SDK connection in frontend HTML
-- backend endpoint for MAX init data validation
-- token verification / decryption logic
-- trusted user context sourced from MAX payload
-- replacement of temporary `X-User-ID` / `userId` trust model
+- реальное подключение MAX JS SDK / MAX JS library во frontend HTML
+- backend endpoint для проверки MAX init data
+- логика проверки подписи или расшифровки токена
+- trusted user context, построенный из MAX payload
+- замена временной схемы `X-User-ID` / `userId`
 
-## Target Architecture
+## Целевая архитектура
 
 ### Frontend
 
-The frontend must:
+Frontend должен:
 
-1. include the real MAX Mini App JavaScript library in the HTML entrypoint
-2. read init data from the MAX runtime
-3. send raw init data or token payload to backend validation endpoint
-4. wait for validated user profile/bootstrap response
-5. stop sending arbitrary client-defined identity as the source of truth
+1. подключить реальную MAX Mini App JavaScript library в HTML entrypoint
+2. получить init data из MAX runtime
+3. отправить raw init data или token payload в backend validation endpoint
+4. дождаться валидированного identity/bootstrap response
+5. перестать использовать произвольный client-provided `userId` как источник истины
 
-Allowed transitional behavior:
+Допустимое временное поведение:
 
-- frontend may still pass `userId` in payloads while the backend migration is incomplete
-- but that `userId` must come from validated MAX data, not from a hardcoded or manually injected value
+- frontend пока еще может передавать `userId` в payload
+- но этот `userId` должен происходить из validated MAX data, а не из захардкоженного значения или ручной подстановки
 
 ### Backend
 
-The backend must:
+Backend должен:
 
-1. expose a dedicated validation endpoint, for example `POST /api/v1/auth/max/validate`
-2. receive MAX init data / token payload from frontend
-3. verify signature or decrypt payload using configured MAX secret/token
-4. extract the real MAX user identifier
-5. place that identifier into request context for downstream handlers
-6. resolve the user profile in repository and ITILIUM using that identifier
+1. добавить отдельный endpoint, например `POST /api/v1/auth/max/validate`
+2. принимать MAX init data / token payload от frontend
+3. валидировать подпись или расшифровывать payload с использованием настроенного MAX token/secret
+4. извлекать реальный MAX user identifier
+5. класть этот identifier в request context для дальнейших handler/service вызовов
+6. использовать этот identifier для profile resolution и ITILIUM integration
 
 ### ITILIUM
 
-Legacy aiogram uses:
+В legacy aiogram-боте использовался:
 
-- Telegram user id for lookup
+- Telegram user id
 
-Migration target:
+Целевая миграция:
 
-- use real MAX user id instead of Telegram user id
-- later, if needed, remap to another ITILIUM attribute without changing frontend screens
+- использовать реальный MAX user id вместо Telegram user id
+- позже, если понадобится, ремапить его на другой атрибут ITILIUM в одном backend adapter слое
 
-## Concrete Work Plan
+## Конкретный план работ
 
-### Slice 1. Frontend MAX bootstrap
+### Срез 1. Frontend MAX bootstrap
 
-- add the real MAX JS library to frontend HTML
-- create a thin frontend adapter for reading MAX init data
-- define what exact payload is sent to backend validation endpoint
-- add a bootstrap request before calling profile/ticket APIs
+- подключить реальную MAX JS library в frontend HTML
+- добавить тонкий frontend adapter/composable для чтения MAX init data
+- определить, какой именно payload отправляется на backend validation endpoint
+- встроить bootstrap validation до обычных profile/ticket API вызовов
 
-Deliverable:
-- frontend can obtain init data from real MAX runtime instead of a stub
+Результат:
 
-### Slice 2. Backend validation endpoint
+- frontend получает init data из реальной MAX runtime среды, а не из заглушки
 
-- add route like `POST /api/v1/auth/max/validate`
-- define request/response models for MAX validation
-- validate/decrypt payload with configured MAX secret/token
-- return normalized user identity payload
+### Срез 2. Backend validation endpoint
 
-Deliverable:
-- backend can confirm that the caller is a real MAX user
+- добавить route вроде `POST /api/v1/auth/max/validate`
+- описать request/response models для MAX validation
+- реализовать validate/decrypt с использованием MAX secret/token
+- вернуть нормализованный user identity payload
 
-### Slice 3. Trusted identity middleware
+Результат:
 
-- replace the temporary `X-User-ID` / `userId` trust model for protected routes
-- store validated MAX user id in request context
-- use the context user id in profile and ticket handlers
+- backend умеет подтверждать, что caller является реальным пользователем MAX
 
-Deliverable:
-- all user-sensitive routes use trusted identity from backend validation
+### Срез 3. Trusted identity middleware
 
-### Slice 4. ITILIUM migration
+- убрать доверие к `X-User-ID` / `userId` для защищенных сценариев
+- хранить validated MAX user id в request context
+- использовать именно context user id в profile и ticket handlers
 
-- pass validated MAX user id to profile and ticket services
-- use MAX user id in place of Telegram id for ITILIUM lookup
-- preserve backend adapter boundary so future attribute remapping is localized
+Результат:
 
-Deliverable:
-- ITILIUM requests operate with MAX-derived identity
+- все user-sensitive routes работают только от trusted identity, полученного после backend validation
 
-### Slice 5. Transitional cleanup
+### Срез 4. Миграция ITILIUM identity
 
-- remove or restrict manual `X-User-ID` / query `userId` fallback
-- keep it only for local debug if absolutely necessary and behind explicit config
-- update docs and test checklist
+- передавать validated MAX user id в profile и ticket services
+- использовать MAX user id вместо Telegram id при обращении в ITILIUM
+- сохранить backend adapter boundary, чтобы потом можно было локально поменять strategy mapping
 
-Deliverable:
-- no accidental insecure identity bypass in test/prod mode
+Результат:
 
-## Config Expectations
+- outbound ITILIUM calls работают уже с MAX-derived identity
 
-This integration will need MAX-specific config added explicitly to the project configuration, for example:
+### Срез 5. Cleanup переходного режима
 
-- MAX app public identifier
-- MAX secret/token for validation or decryption
-- enable/disable flag for local debug bypass
+- убрать или ограничить fallback на `X-User-ID` / query `userId`
+- если оставить debug-bypass, то только за явным флагом конфигурации
+- обновить документацию и ручной test checklist
 
-The exact variable names should be chosen when the real MAX SDK contract is wired in.
+Результат:
 
-## Testing Plan After Implementation
+- в test/prod режиме не остается случайного insecure identity bypass
 
-When MAX identity integration is added, verify:
+## Что потребуется в конфигурации
 
-1. Mini App opens inside real MAX environment and the JS library is loaded
-2. frontend receives init data from MAX
-3. backend validates/decrypts token successfully
-4. extracted MAX user id appears in logs/context as the acting user
-5. profile lookup works for a real MAX user
-6. the same user id is passed further into ITILIUM calls
-7. forged `X-User-ID` or manual `userId` no longer changes the acting user in protected flows
+Для этой интеграции понадобятся MAX-специфичные настройки проекта, например:
 
-## Important Transition Rule
+- публичный идентификатор MAX Mini App
+- MAX secret/token для validate/decrypt
+- флаг включения debug bypass для локальной разработки
 
-Until this plan is implemented:
+Точные имена переменных лучше зафиксировать в момент подключения реального MAX SDK контракта.
 
-- any `userId` passed into ITILIUM should be treated as a temporary stand-in
-- the intended meaning is already "MAX user id instead of Telegram id"
-- later replacement should be done in one place, not scattered across frontend screens
+## Что проверять после внедрения
+
+После реализации MAX identity integration нужно проверить:
+
+1. Mini App открывается внутри реальной MAX среды и JS library действительно загружается
+2. frontend получает init data из MAX
+3. backend успешно валидирует или расшифровывает token payload
+4. извлеченный MAX user id попадает в logs/context как acting user
+5. profile lookup работает для реального MAX пользователя
+6. этот же user id дальше уходит в ITILIUM calls
+7. подмена `X-User-ID` или manual `userId` больше не меняет acting user в защищенных сценариях
+
+## Важное переходное правило
+
+Пока этот план не реализован:
+
+- любой `userId`, который уходит в ITILIUM, нужно считать временным stand-in значением
+- по смыслу это уже должен быть "MAX user id вместо Telegram id"
+- позже источник этого id нужно заменить централизованно, а не править каждый экран отдельно
