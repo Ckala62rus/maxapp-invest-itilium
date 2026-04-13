@@ -6,6 +6,9 @@ import {
   actionTypes as authActionTypes,
   getterTypes as authGetterTypes
 } from '@/store/modules/auth'
+import HomeScreen from '@/screens/HomeScreen.vue'
+import ProfileScreen from '@/screens/ProfileScreen.vue'
+import RegistrationScreen from '@/screens/RegistrationScreen.vue'
 import {
   actionTypes as ticketActionTypes,
   getterTypes as ticketGetterTypes
@@ -492,137 +495,28 @@ function formatTimelineTime(value) {
           </button>
         </div>
 
-        <section v-if="activeScreen === 'home'" class="screen">
-          <div class="hero-card">
-            <p class="status-pill success">Mini App готов к демонстрации</p>
-            <h2>Управляйте заявками ITILIUM прямо внутри MAX</h2>
-            <p>
-              Пользователь сможет пройти регистрацию, создать обращение, отследить статус,
-              оставить комментарий и работать с заявками в своей ответственности.
-            </p>
-            <div class="hero-actions">
-              <button class="primary-button" @click="openScreen('create')">Создать заявку</button>
-              <button class="secondary-button" @click="openScreen('myTickets')">Мои заявки</button>
-            </div>
-          </div>
+        <HomeScreen
+          v-if="activeScreen === 'home'"
+          :summary-cards="summaryCards"
+          @open-screen="openScreen"
+        />
 
-          <div class="summary-grid">
-            <article
-              v-for="card in summaryCards"
-              :key="card.title"
-              class="summary-card"
-              :class="card.tone"
-            >
-              <span>{{ card.title }}</span>
-              <strong>{{ card.value }}</strong>
-            </article>
-          </div>
+        <ProfileScreen
+          v-else-if="activeScreen === 'profile'"
+          :current-user="currentUser"
+          :profile-initials="profileInitials"
+          :profile-status-text="profileStatusText"
+          :profile-region="profileRegion"
+          @open-screen="openScreen"
+        />
 
-          <div class="state-grid">
-            <article class="state-card">
-              <div class="spinner"></div>
-              <div>
-                <h3>Loading state</h3>
-                <p>Используем на экранах поиска, списка и отправки заявки.</p>
-              </div>
-            </article>
-            <article class="state-card">
-              <div class="state-icon empty">0</div>
-              <div>
-                <h3>Empty state</h3>
-                <p>Нет заявок в выборке. Предлагаем создать новое обращение.</p>
-              </div>
-            </article>
-            <article class="state-card">
-              <div class="state-icon error">!</div>
-              <div>
-                <h3>Error state</h3>
-                <p>Итилиум недоступен или вернул ошибку. Показываем дружелюбный текст.</p>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <section v-else-if="activeScreen === 'profile'" class="screen">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Профиль</p>
-              <h2>Пользователь MAX</h2>
-            </div>
-            <span class="status-pill info">Авторизация пройдена</span>
-          </div>
-
-          <article class="content-card">
-            <div class="profile-row">
-              <div class="avatar">{{ profileInitials }}</div>
-              <div>
-                <h3>{{ currentUser?.fullName || 'Загрузка профиля...' }}</h3>
-                <p>@{{ currentUser?.username || 'unknown' }} · user_id {{ currentUser?.userId || '...' }}</p>
-              </div>
-            </div>
-            <div class="details-grid">
-              <div>
-                <span>Статус в ITILIUM</span>
-                <strong>{{ profileStatusText }}</strong>
-              </div>
-              <div>
-                <span>Роль в MAX</span>
-                <strong>Пользователь mini app</strong>
-              </div>
-              <div>
-                <span>Регион</span>
-                <strong>{{ profileRegion }}</strong>
-              </div>
-              <div>
-                <span>Последний вход</span>
-                <strong>09.04.2026 22:30</strong>
-              </div>
-            </div>
-            <button
-              class="primary-button wide"
-              @click="openScreen(currentUser?.registrationRequired ? 'registration' : 'home')"
-            >
-              {{ currentUser?.registrationRequired ? 'Перейти к регистрации' : 'Перейти на главную' }}
-            </button>
-          </article>
-        </section>
-
-        <section v-else-if="activeScreen === 'registration'" class="screen">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Регистрация</p>
-              <h2>Вас не нашли в ITILIUM</h2>
-            </div>
-            <span class="status-pill warning">Требуется заполнение формы</span>
-          </div>
-
-          <article class="content-card form-card">
-            <label>
-              Табельный номер
-              <input v-model="registrationForm.employeeNumber" type="text" />
-            </label>
-            <label>
-              ФИО
-              <input v-model="registrationForm.fullName" type="text" />
-            </label>
-            <label>
-              Магазин / подразделение
-              <input v-model="registrationForm.department" type="text" />
-            </label>
-            <label>
-              Телефон
-              <input v-model="registrationForm.phone" type="text" />
-            </label>
-            <label>
-              Комментарий
-              <textarea v-model="registrationForm.comment" rows="4"></textarea>
-            </label>
-            <p v-if="authErrors.length" class="status-pill rose">{{ authErrors[0] }}</p>
-            <button class="primary-button wide" :disabled="isRegistrationSubmitting" @click="submitRegistration">
-              {{ isRegistrationSubmitting ? 'Отправка...' : 'Отправить заявку на регистрацию' }}
-            </button>
-          </article>
-        </section>
+        <RegistrationScreen
+          v-else-if="activeScreen === 'registration'"
+          :registration-form="registrationForm"
+          :auth-errors="authErrors"
+          :is-registration-submitting="isRegistrationSubmitting"
+          @submit-registration="submitRegistration"
+        />
 
         <section v-else-if="activeScreen === 'create'" class="screen">
           <div class="section-header">
