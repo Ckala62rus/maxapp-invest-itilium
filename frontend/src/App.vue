@@ -69,14 +69,6 @@ const registrationForm = ref({
   comment: 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
 })
 
-// The prototype dashboard metrics visually summarize the product scope.
-const summaryCards = [
-  { title: 'Мои заявки', value: '12', tone: 'blue' },
-  { title: 'В работе', value: '4', tone: 'amber' },
-  { title: 'В моей ответственности', value: '7', tone: 'purple' },
-  { title: 'Нужна регистрация', value: '1', tone: 'rose' }
-]
-
 // These cards imitate the current user's tickets.
 const myTickets = [
   { number: 'SC-000245', title: 'Не открывается 1С на кассе', state: 'В работе', deadline: '11.04.2026', tone: 'amber' },
@@ -146,6 +138,36 @@ const normalizedResponsibleTickets = computed(() => {
     tone: ticket.tone || resolveTicketTone(ticket.state),
     owner: ticket.owner || ticket.responsibleTeam || 'Не указано'
   }))
+})
+// The dashboard now summarizes the same auth and ticket data that power the screens,
+// so the home overview reacts when lists load or new tickets are created.
+const summaryCards = computed(() => {
+  const inProgressCount = normalizedMyTickets.value.filter((ticket) => {
+    return ['В работе', 'Ожидает ответа'].includes(ticket.state)
+  }).length
+
+  return [
+    {
+      title: 'Мои заявки',
+      value: String(normalizedMyTickets.value.length),
+      tone: 'blue'
+    },
+    {
+      title: 'В работе',
+      value: String(inProgressCount),
+      tone: 'amber'
+    },
+    {
+      title: 'В моей ответственности',
+      value: String(normalizedResponsibleTickets.value.length),
+      tone: 'purple'
+    },
+    {
+      title: 'Нужна регистрация',
+      value: currentUser.value?.registrationRequired ? '1' : '0',
+      tone: 'rose'
+    }
+  ]
 })
 const profileInitials = computed(() => {
   const fullName = currentUser.value?.fullName || 'MAX Пользователь'
