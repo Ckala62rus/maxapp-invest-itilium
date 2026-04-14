@@ -2,8 +2,9 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/maxapp-bot ./cmd/bot"
-bin = "./tmp/maxapp-bot"
+cmd = "go build -gcflags=\"all=-N -l\" -o ./tmp/maxapp-bot.exe ./cmd/bot"
+bin = "./tmp/maxapp-bot.exe"
+full_bin = "dlv exec ./tmp/maxapp-bot.exe --headless --listen=:40000 --api-version=2 --accept-multiclient --continue"
 include_ext = ["go", "yaml", "yml"]
 exclude_dir = ["frontend", "example", "node_modules", "tmp"]
 delay = 500
