@@ -83,6 +83,31 @@ func (h *Handler) RegisterUser(writer http.ResponseWriter, request *http.Request
 	})
 }
 
+// FindEmployeeByIdentifier calls the legacy ITILIUM employee lookup endpoint through the service layer.
+func (h *Handler) FindEmployeeByIdentifier(writer http.ResponseWriter, request *http.Request) {
+	var payload models.EmployeeLookupRequest
+	if err := decodeJSON(request, &payload); err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	if payload.Identifier == "" {
+		payload.Identifier = middleware.UserIDFromContext(request.Context())
+	}
+
+	employee, err := h.profileService.FindEmployeeByIdentifier(request.Context(), payload)
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "employee payload loaded",
+		Data:    employee,
+	})
+}
+
 // ListMyTickets returns the current user's own tickets.
 func (h *Handler) ListMyTickets(writer http.ResponseWriter, request *http.Request) {
 	tickets, err := h.ticketService.ListMyTickets(request.Context(), middleware.UserIDFromContext(request.Context()))

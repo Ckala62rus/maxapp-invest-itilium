@@ -33,6 +33,30 @@ type RegistrationRequest struct {
 	Comment string `json:"comment"`
 }
 
+// EmployeeLookupRequest describes a legacy-style user lookup in ITILIUM.
+type EmployeeLookupRequest struct {
+	// Identifier stores the value sent to ITILIUM, for example employee id or MAX user id.
+	Identifier string `json:"identifier"`
+	// AttributeCode stores the ITILIUM field name used for lookup, for example employee or telegram.
+	AttributeCode string `json:"attributeCode"`
+}
+
+// EmployeeLookupResult stores a normalized response from the legacy find_employee endpoint.
+type EmployeeLookupResult struct {
+	// Identifier stores the lookup value that was sent to ITILIUM.
+	Identifier string `json:"identifier"`
+	// AttributeCode stores the attribute name used for lookup.
+	AttributeCode string `json:"attributeCode"`
+	// UUID stores the employee UUID returned by ITILIUM.
+	UUID string `json:"uuid"`
+	// ServiceCalls stores the list of the user's ticket numbers from ITILIUM.
+	ServiceCalls []string `json:"servicecalls"`
+	// CanCreateMarketingRequests stores the marketing access flag returned by ITILIUM.
+	CanCreateMarketingRequests bool `json:"canCreateMarketingRequests"`
+	// Raw stores the full ITILIUM payload so unknown flags are not lost during exploration.
+	Raw map[string]any `json:"raw"`
+}
+
 // TicketSummary describes a short card representation of a ticket.
 type TicketSummary struct {
 	// Number stores the ITILIUM ticket number.

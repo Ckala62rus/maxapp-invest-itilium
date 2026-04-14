@@ -13,6 +13,8 @@ import (
 
 // ItiliumClient describes external ITILIUM calls consumed by the service layer.
 type ItiliumClient interface {
+	// FindEmployeeByIdentifier requests a raw employee payload from ITILIUM.
+	FindEmployeeByIdentifier(ctx context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error)
 	// ListMyTickets returns tickets created by the current user.
 	ListMyTickets(ctx context.Context, userID string) ([]models.TicketSummary, error)
 	// ListResponsibleTickets returns tickets assigned to the current user.

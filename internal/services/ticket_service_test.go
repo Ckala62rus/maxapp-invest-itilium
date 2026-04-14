@@ -13,6 +13,10 @@ type itiliumClientStub struct {
 	getTicketCalls int
 }
 
+func (s *itiliumClientStub) FindEmployeeByIdentifier(_ context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
+	return models.EmployeeLookupResult{Identifier: request.Identifier, AttributeCode: request.AttributeCode}, nil
+}
+
 func (s *itiliumClientStub) ListMyTickets(_ context.Context, _ string) ([]models.TicketSummary, error) {
 	return []models.TicketSummary{{Number: "SC-1"}}, nil
 }

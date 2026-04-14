@@ -17,14 +17,24 @@ type ProfileRepository interface {
 	SaveRegistration(ctx context.Context, request models.RegistrationRequest) models.UserProfile
 }
 
+// EmployeeLookupClient describes outbound employee lookup calls used by ProfileService.
+type EmployeeLookupClient interface {
+	// FindEmployeeByIdentifier requests a raw employee payload from ITILIUM.
+	FindEmployeeByIdentifier(ctx context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error)
+}
+
 // ProfileService handles current user profile and registration flows.
 type ProfileService struct {
-	repository ProfileRepository
+	repository   ProfileRepository
+	lookupClient EmployeeLookupClient
 }
 
 // NewProfileService creates a profile service.
-func NewProfileService(repository ProfileRepository) *ProfileService {
-	return &ProfileService{repository: repository}
+func NewProfileService(repository ProfileRepository, lookupClient EmployeeLookupClient) *ProfileService {
+	return &ProfileService{
+		repository:   repository,
+		lookupClient: lookupClient,
+	}
 }
 
 // GetProfile returns the profile snapshot for a MAX user.
@@ -60,4 +70,19 @@ func (s *ProfileService) Register(ctx context.Context, request models.Registrati
 	}
 
 	return s.repository.SaveRegistration(ctx, request), nil
+}
+
+// FindEmployeeByIdentifier loads a raw employee payload from ITILIUM for exploration and future identity mapping.
+func (s *ProfileService) FindEmployeeByIdentifier(ctx context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
+	if strings.TrimSpace(request.Identifier) == "" {
+		return models.EmployeeLookupResult{}, errors.New("identifier is required")
+	}
+	if strings.TrimSpace(request.AttributeCode) == "" {
+		request.AttributeCode = "employee"
+	}
+	if s.lookupClient == nil {
+		return models.EmployeeLookupResult{}, errors.New("employee lookup client is not configured")
+	}
+
+	return s.lookupClient.FindEmployeeByIdentifier(ctx, request)
 }

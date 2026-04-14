@@ -104,6 +104,30 @@
 }
 ```
 
+#### `POST /api/v1/users/employee`
+
+Зачем:
+
+- сходить в legacy `find_employee` через наш backend
+- посмотреть реальный payload пользователя из ITILIUM
+- зафиксировать `UUID`, `servicecalls` и дополнительные флаги
+
+Тело запроса:
+
+```json
+{
+  "identifier": "100245",
+  "attributeCode": "employee"
+}
+```
+
+Что важно:
+
+- если `attributeCode` не передан, backend подставляет `employee`
+- если `identifier` не передан, backend берет текущий `userId` из context
+- этот endpoint сделан как отдельный учебный и исследовательский flow
+- он пока не заменяет обычный `GET /api/v1/users/me`
+
 #### `POST /api/v1/users/register`
 
 Зачем:

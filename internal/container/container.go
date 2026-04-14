@@ -52,17 +52,22 @@ func Build(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Conta
 	profileRepository := repository.NewMemoryUserRepository()
 
 	var itiliumClient services.ItiliumClient
+	var employeeLookupClient services.EmployeeLookupClient
 	if cfg.App.DemoMode {
 		logger.Info("using demo itilium client")
-		itiliumClient = api.NewDemoClient()
+		demoClient := api.NewDemoClient()
+		itiliumClient = demoClient
+		employeeLookupClient = demoClient
 	} else {
 		if cfg.Itilium.BaseURL == "" {
 			return nil, fmt.Errorf("itilium base url is required when demo mode is disabled")
 		}
-		itiliumClient = api.NewClient(cfg.Itilium, logger)
+		realClient := api.NewClient(cfg.Itilium, logger)
+		itiliumClient = realClient
+		employeeLookupClient = realClient
 	}
 
-	profileService := services.NewProfileService(profileRepository)
+	profileService := services.NewProfileService(profileRepository, employeeLookupClient)
 	ticketService := services.NewTicketService(itiliumClient, cache)
 	handler := handlers.New(logger, profileService, ticketService)
 

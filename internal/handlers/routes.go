@@ -12,6 +12,7 @@ import (
 func (h *Handler) Routes() http.Handler {
 	router := chi.NewRouter()
 
+	router.Use(middleware.CORS)
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Identity)
 	router.Use(middleware.Recover(h.logger))
@@ -25,6 +26,7 @@ func (h *Handler) Routes() http.Handler {
 	router.Route("/api/v1", func(router chi.Router) {
 		router.Get("/users/me", h.GetProfile)
 		router.Post("/users/register", h.RegisterUser)
+		router.Post("/users/employee", h.FindEmployeeByIdentifier)
 		router.Get("/tickets", h.ListMyTickets)
 		router.Get("/tickets/responsible", h.ListResponsibleTickets)
 		router.Post("/tickets/search", h.SearchTicket)

@@ -50,6 +50,31 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 	return response, nil
 }
 
+// FindEmployeeByIdentifier loads a user payload from the legacy ITILIUM find_employee endpoint.
+func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
+	attributeCode := strings.TrimSpace(request.AttributeCode)
+	if attributeCode == "" {
+		attributeCode = "employee"
+	}
+
+	form := url.Values{}
+	form.Set(attributeCode, request.Identifier)
+
+	var payload map[string]any
+	if err := c.doForm(ctx, http.MethodPost, "/find_employee", form, &payload); err != nil {
+		return models.EmployeeLookupResult{}, err
+	}
+
+	return models.EmployeeLookupResult{
+		Identifier:                 request.Identifier,
+		AttributeCode:              attributeCode,
+		UUID:                       stringFromAny(payload["UUID"]),
+		ServiceCalls:               stringSliceFromAny(payload["servicecalls"]),
+		CanCreateMarketingRequests: boolFromAny(payload["canCreateMarketingRequests"]),
+		Raw:                        payload,
+	}, nil
+}
+
 // ListResponsibleTickets returns tickets assigned to the current user.
 func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]models.TicketSummary, error) {
 	var response []models.TicketSummary
@@ -205,12 +230,95 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 	return nil
 }
 
+// doForm performs a x-www-form-urlencoded request for legacy ITILIUM endpoints.
+func (c *Client) doForm(ctx context.Context, method string, path string, form url.Values, responseBody any) error {
+	if c.baseURL == "" {
+		return errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return fmt.Errorf("parse itilium url: %w", err)
+	}
+
+	encodedForm := form.Encode()
+	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), strings.NewReader(encodedForm))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error("itilium form request failed", "method", method, "url", endpoint.String(), "duration_ms", time.Since(start).Milliseconds(), "error", err)
+		return fmt.Errorf("perform form request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	c.logger.Info(
+		"itilium form request completed",
+		"method", method,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"form_body", encodedForm,
+		"response_body", string(payload),
+	)
+
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("itilium request failed with status %d", response.StatusCode)
+	}
+
+	if responseBody == nil || len(payload) == 0 {
+		return nil
+	}
+
+	if err := json.Unmarshal(payload, responseBody); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+
+	return nil
+}
+
 // DemoClient returns deterministic data used by the scaffold and tests.
 type DemoClient struct{}
 
 // NewDemoClient creates a deterministic demo client.
 func NewDemoClient() *DemoClient {
 	return &DemoClient{}
+}
+
+// FindEmployeeByIdentifier returns a deterministic employee payload for local learning flows.
+func (c *DemoClient) FindEmployeeByIdentifier(_ context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
+	attributeCode := strings.TrimSpace(request.AttributeCode)
+	if attributeCode == "" {
+		attributeCode = "employee"
+	}
+
+	return models.EmployeeLookupResult{
+		Identifier:                 request.Identifier,
+		AttributeCode:              attributeCode,
+		UUID:                       "demo-employee-uuid",
+		ServiceCalls:               []string{"SC-000245", "SC-000244", "SC-000238"},
+		CanCreateMarketingRequests: true,
+		Raw: map[string]any{
+			"UUID":                       "demo-employee-uuid",
+			"servicecalls":               []string{"SC-000245", "SC-000244", "SC-000238"},
+			"canCreateMarketingRequests": true,
+			"employee":                   request.Identifier,
+			"displayName":                "Александр Максимов",
+		},
+	}, nil
 }
 
 // ListMyTickets returns a static list of personal tickets.
@@ -314,5 +422,51 @@ func demoTicket(number string) models.TicketDetail {
 			{Author: "Система", Message: "Заявка зарегистрирована и отправлена в отдел ИТ.", CreatedAt: "2026-04-09T09:18:00+03:00"},
 			{Author: "Ответственный", Message: "Проверяю обновление, вернусь с ответом через 10 минут.", CreatedAt: "2026-04-09T09:34:00+03:00"},
 		},
+	}
+}
+
+// stringFromAny converts dynamic JSON values into strings without panicking on unknown types.
+func stringFromAny(value any) string {
+	if value == nil {
+		return ""
+	}
+
+	switch converted := value.(type) {
+	case string:
+		return converted
+	case fmt.Stringer:
+		return converted.String()
+	default:
+		return fmt.Sprintf("%v", value)
+	}
+}
+
+// stringSliceFromAny converts raw JSON arrays into a string slice for normalized models.
+func stringSliceFromAny(value any) []string {
+	switch converted := value.(type) {
+	case []string:
+		return converted
+	case []any:
+		result := make([]string, 0, len(converted))
+		for _, item := range converted {
+			if text := strings.TrimSpace(stringFromAny(item)); text != "" {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+// boolFromAny converts legacy JSON flags into a bool, accepting both boolean and string forms.
+func boolFromAny(value any) bool {
+	switch converted := value.(type) {
+	case bool:
+		return converted
+	case string:
+		return strings.EqualFold(strings.TrimSpace(converted), "true")
+	default:
+		return false
 	}
 }
