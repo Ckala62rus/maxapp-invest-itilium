@@ -3,16 +3,26 @@ import axios from 'axios'
 import { getItem, removeItem } from '@/helpers/persistenceStorage'
 
 const env = import.meta.env
+const debugUserId = env.VITE_DEBUG_USER_ID || ''
 
-// The frontend runs on Vite, so the backend base URL is taken from VITE_BACKEND_API.
-axios.defaults.baseURL = env.VITE_BACKEND_API || ''
+// Keep API calls relative by default so Vite/nginx can proxy them through the
+// same public origin used by MAX and tunnel providers.
+axios.defaults.baseURL = env.VITE_PUBLIC_API_BASE_URL || ''
 
 // Every request reads the current token from storage to keep auth state centralized.
 axios.interceptors.request.use((config) => {
   const token = getItem('access_token')
 
   config.headers = config.headers || {}
-  config.headers.Authorization = token ? `Bearer ${token}` : ''
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+    delete config.headers['X-User-ID']
+  } else {
+    config.headers.Authorization = ''
+    if (env.DEV && debugUserId) {
+      config.headers['X-User-ID'] = debugUserId
+    }
+  }
 
   return config
 })
@@ -23,15 +33,8 @@ axios.interceptors.response.use(undefined, (error) => {
   const status = error?.response?.status
 
   if (status === 401) {
-    if (location === '/password-reset') {
-      return Promise.reject(error)
-    }
-
-    if (location !== '/login') {
-      removeItem('access_token')
-      delete axios.defaults.headers.common.Authorization
-      window.location.href = '/login'
-    }
+    removeItem('access_token')
+    delete axios.defaults.headers.common.Authorization
   }
 
   return Promise.reject(error)

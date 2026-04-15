@@ -3,6 +3,18 @@ defineProps({
   summaryCards: {
     type: Array,
     required: true
+  },
+  maxBridgeState: {
+    type: Object,
+    required: true
+  },
+  rawInitData: {
+    type: String,
+    required: true
+  },
+  rawInitDataUnsafeUserId: {
+    type: String,
+    required: true
   }
 })
 
@@ -41,6 +53,15 @@ function openScreen(screenId) {
         <strong>{{ card.value }}</strong>
       </article>
     </div>
+
+    <article class="content-card">
+      <h3>MAX bridge debug</h3>
+      <p><strong>window.WebApp:</strong> {{ maxBridgeState.isAvailable ? 'доступен' : 'недоступен' }}</p>
+      <p><strong>initDataUnsafe.user.id:</strong> {{ rawInitDataUnsafeUserId || 'пусто' }}</p>
+      <p><strong>initData length:</strong> {{ rawInitData.length }}</p>
+      <p><strong>initData raw:</strong></p>
+      <pre class="debug-pre">{{ rawInitData || 'ПУСТО' }}</pre>
+    </article>
 
     <div class="state-grid">
       <article class="state-card">

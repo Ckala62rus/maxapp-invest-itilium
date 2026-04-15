@@ -8,6 +8,11 @@ import {
 // useTicketFlow groups ticket-specific screen state, derived data and actions
 // so App.vue can stay focused on auth bootstrap, layout and screen switching.
 export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }) {
+  const defaultRequestType = 'Заявка в отдел ИТ'
+
+  // Page size for «Мои заявки» when the list is built from ITILIUM `servicecalls`.
+  const myTicketsPageSize = 5
+
   // The search field persists the current ticket number between list and search flows.
   const searchQuery = ref('SC-000245')
 
@@ -29,12 +34,25 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
   // The create form mirrors the backend ticket creation contract.
   const createTicketForm = ref({
-    requestType: 'Заявка в отдел ИТ',
-    title: 'Не открывается 1С на кассе',
-    description: 'После обновления 1С не запускается на рабочем месте кассира. Нужна диагностика и восстановление работы.',
-    department: 'Отдел ИТ',
-    executionDate: '2026-04-11',
-    attachments: ['screenshot-1.png', 'error-log.pdf']
+    requestType: defaultRequestType,
+    title: '',
+    description: '',
+    department: currentUser.value?.department || '',
+    executionDate: '',
+    attachments: []
+  })
+
+  const availableRequestTypes = computed(() => {
+    const options = [defaultRequestType]
+
+    if (currentUser.value?.canCreateMarketingRequests) {
+      options.push('Маркетинговая заявка')
+    }
+    if (currentUser.value?.canCreateDaxRequests) {
+      options.push('Заявка в DAX')
+    }
+
+    return options
   })
 
   // These cards imitate the current user's tickets.
@@ -63,6 +81,27 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
   const storeMyTickets = computed(() => store.getters[ticketGetterTypes.myTickets] || [])
   const storeResponsibleTickets = computed(() => store.getters[ticketGetterTypes.responsibleTickets] || [])
+
+  // When ITILIUM returns `servicecalls`, the list is driven by those numbers until a dedicated list API exists.
+  const ticketsFromServiceCalls = computed(() => {
+    const user = currentUser.value
+    const ids = user?.servicecalls
+
+    if (!user?.employeeFound || user?.registrationRequired || !Array.isArray(ids) || ids.length === 0) {
+      return null
+    }
+
+    return ids
+      .map((id) => String(id).trim())
+      .filter(Boolean)
+      .map((number) => ({
+        number,
+        title: `Заявка ${number}`,
+        state: 'Откройте карточку',
+        deadline: '—',
+        tone: 'info'
+      }))
+  })
   const selectedTicket = computed(() => store.getters[ticketGetterTypes.selectedTicket] || null)
   const responsibleOptions = computed(() => store.getters[ticketGetterTypes.responsibleOptions] || [])
   const isLoadingMyTickets = computed(() => store.getters[ticketGetterTypes.isLoadingMyTickets])
@@ -78,6 +117,15 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const createErrors = computed(() => store.getters[ticketGetterTypes.createError] || [])
 
   const normalizedMyTickets = computed(() => {
+    const fromCalls = ticketsFromServiceCalls.value
+
+    if (fromCalls) {
+      return fromCalls.map((ticket) => ({
+        ...ticket,
+        tone: ticket.tone || resolveTicketTone(ticket.state)
+      }))
+    }
+
     const source = storeMyTickets.value.length ? storeMyTickets.value : myTickets
 
     return source.map((ticket) => ({
@@ -123,18 +171,40 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
         title: 'Нужна регистрация',
         value: currentUser.value?.registrationRequired ? '1' : '0',
         tone: 'rose'
+      },
+      {
+        title: 'Мои номера заявок',
+        value: String(currentUser.value?.servicecalls?.length || normalizedMyTickets.value.length),
+        tone: 'slate'
       }
     ]
   })
 
+  watch(() => currentUser.value?.servicecalls, () => {
+    currentTicketsPage.value = 1
+  })
+
+  watch([currentUser, availableRequestTypes], ([user, requestTypes]) => {
+    if (!requestTypes.includes(createTicketForm.value.requestType)) {
+      createTicketForm.value.requestType = requestTypes[0] || defaultRequestType
+    }
+
+    createTicketForm.value = {
+      ...createTicketForm.value,
+      department: createTicketForm.value.department || user?.department || ''
+    }
+  }, { immediate: true })
+
   // A computed slice is enough to show how page navigation will behave.
   const paginatedTickets = computed(() => {
-    const start = (currentTicketsPage.value - 1) * 3
-    return normalizedMyTickets.value.slice(start, start + 3)
+    const start = (currentTicketsPage.value - 1) * myTicketsPageSize
+    return normalizedMyTickets.value.slice(start, start + myTicketsPageSize)
   })
 
   // The page count drives the pager buttons in the static demo.
-  const pageCount = computed(() => Math.ceil(normalizedMyTickets.value.length / 3))
+  const pageCount = computed(() => Math.ceil(normalizedMyTickets.value.length / myTicketsPageSize))
+
+  const myTicketsListSource = computed(() => (ticketsFromServiceCalls.value ? 'servicecalls' : 'store'))
   const detailStatusTone = computed(() => resolveTicketTone(selectedTicket.value?.state))
   const availableStatusOptions = computed(() => selectedTicket.value?.availableStates || [])
   const availableResponsibleOptions = computed(() => {
@@ -191,8 +261,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
 
     const response = await store.dispatch(ticketActionTypes.searchTicket, {
-      number,
-      userId: currentUser.value?.userId || ''
+      number
     })
 
     if (response?.data?.success) {
@@ -202,7 +271,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
   async function submitCreateTicket() {
     const response = await store.dispatch(ticketActionTypes.createTicket, {
-      userId: currentUser.value?.userId || '',
       requestType: createTicketForm.value.requestType,
       title: createTicketForm.value.title,
       description: createTicketForm.value.description,
@@ -218,6 +286,25 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
   }
 
+  function setCreateExecutionDate(value) {
+    createTicketForm.value.executionDate = value || ''
+  }
+
+  function addCreateAttachments(files) {
+    const nextFiles = Array.from(files || [])
+      .map((file) => file?.name || '')
+      .filter(Boolean)
+
+    createTicketForm.value.attachments = [
+      ...createTicketForm.value.attachments,
+      ...nextFiles
+    ]
+  }
+
+  function removeCreateAttachment(fileName) {
+    createTicketForm.value.attachments = createTicketForm.value.attachments.filter((item) => item !== fileName)
+  }
+
   async function submitComment() {
     if (!selectedTicket.value?.number || !commentDraft.value.trim()) {
       return
@@ -226,7 +313,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     const response = await store.dispatch(ticketActionTypes.addComment, {
       number: selectedTicket.value.number,
       data: {
-        userId: currentUser.value?.userId || '',
         message: commentDraft.value.trim(),
         attachments: []
       }
@@ -246,7 +332,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     const response = await store.dispatch(ticketActionTypes.changeStatus, {
       number: selectedTicket.value.number,
       data: {
-        userId: currentUser.value?.userId || '',
         state: statusForm.value.state,
         comment: statusForm.value.comment,
         date: statusForm.value.date
@@ -268,7 +353,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     const response = await store.dispatch(ticketActionTypes.changeResponsible, {
       number: selectedTicket.value.number,
       data: {
-        userId: currentUser.value?.userId || '',
         responsibleId
       }
     })
@@ -312,6 +396,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     listErrors,
     ticketErrors,
     createErrors,
+    availableRequestTypes,
     normalizedResponsibleTickets,
     summaryCards,
     paginatedTickets,
@@ -325,12 +410,16 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     openTicketDetails,
     searchTicketByNumber,
     submitCreateTicket,
+    setCreateExecutionDate,
+    addCreateAttachments,
+    removeCreateAttachment,
     submitComment,
     submitStatusChange,
     assignResponsible,
     setTicketsPage,
     setSearchQuery,
-    setCommentDraft
+    setCommentDraft,
+    myTicketsListSource
   }
 }
 

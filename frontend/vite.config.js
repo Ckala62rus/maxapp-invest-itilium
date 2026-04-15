@@ -15,14 +15,28 @@ export default defineConfig(() => {
     server: {
       host: '0.0.0.0',
       port: 5173,
-      // To call the backend directly from the browser, keep Vite proxy disabled.
-      // Previous proxy target example: VITE_BACKEND_API or http://localhost:3000
-      // proxy: {
-      //   '/api': {
-      //     target: 'http://localhost:3000',
-      //     changeOrigin: true
-      //   }
-      // }
+      // Tuna issues dynamic subdomains, so allow the tunnel suffix in development.
+      allowedHosts: ['localhost', '127.0.0.1', '.ru.tuna.am'],
+      // Proxy backend routes through the same public tunnel host so MAX WebView
+      // never tries to call localhost:3000 from the client device.
+      proxy: {
+        '/api': {
+          target: 'http://backend-dev:3000',
+          changeOrigin: true
+        },
+        '/healthz': {
+          target: 'http://backend-dev:3000',
+          changeOrigin: true
+        },
+        '/readyz': {
+          target: 'http://backend-dev:3000',
+          changeOrigin: true
+        },
+        '/metrics': {
+          target: 'http://backend-dev:3000',
+          changeOrigin: true
+        }
+      }
     }
   }
 })

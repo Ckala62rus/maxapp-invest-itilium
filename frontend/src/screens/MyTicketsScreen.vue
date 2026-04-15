@@ -19,6 +19,11 @@ defineProps({
   currentTicketsPage: {
     type: Number,
     required: true
+  },
+  // `servicecalls` — номера из ITILIUM; `store` — мок или ответ общего списка из Vuex.
+  listSource: {
+    type: String,
+    required: true
   }
 })
 
@@ -42,14 +47,20 @@ function setTicketsPage(page) {
         <p class="eyebrow">Мои заявки</p>
         <h2>История обращений</h2>
       </div>
-      <span class="status-pill info">Пагинация готова</span>
+      <span class="status-pill info">{{ listSource === 'servicecalls' ? 'Номера из ITILIUM' : 'Демо / API' }}</span>
     </div>
 
     <article v-if="isLoadingMyTickets" class="state-card">
       <div class="spinner"></div>
       <div>
         <h3>Загружаем список</h3>
-        <p>Получаем ваши заявки из общего Vuex store и backend API.</p>
+        <p>
+          {{
+            listSource === 'servicecalls'
+              ? 'Список построен по полю servicecalls из профиля.'
+              : 'Получаем ваши заявки из общего Vuex store и backend API.'
+          }}
+        </p>
       </div>
     </article>
 

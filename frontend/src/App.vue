@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 
 import HomeScreen from '@/screens/HomeScreen.vue'
@@ -15,7 +15,7 @@ import { useTicketFlow } from '@/composables/useTicketFlow'
 
 const store = useStore()
 
-// Screen ids are used by the static prototype navigator.
+// Screen ids are used by the internal app navigator after onboarding is complete.
 const screenOptions = [
   { id: 'home', label: 'Главная' },
   { id: 'profile', label: 'Профиль' },
@@ -33,15 +33,25 @@ const activeScreen = ref('home')
 // The submission banner imitates the visual result of a completed action.
 const submitBanner = ref('')
 
+const showPrototypeNavigation = computed(() => {
+  return Boolean(currentUser.value?.employeeFound) && !currentUser.value?.registrationRequired
+})
+
 const {
   registrationForm,
   currentUser,
+  currentIdentity,
   isRegistrationSubmitting,
+  isAuthBootstrapping,
   authErrors,
   profileInitials,
   profileStatusText,
   profileRegion,
-  loadAuthProfile,
+  registrationIdentityUserId,
+  maxBridgeState,
+  rawInitData,
+  rawInitDataUnsafeUserId,
+  bootstrapAuth,
   submitRegistration
 } = useAuthFlow({
   store,
@@ -56,6 +66,7 @@ const {
   statusForm,
   selectedResponsibleId,
   createTicketForm,
+  availableRequestTypes,
   isLoadingMyTickets,
   isLoadingResponsibleTickets,
   isCreatingTicket,
@@ -80,12 +91,16 @@ const {
   openTicketDetails,
   searchTicketByNumber,
   submitCreateTicket,
+  setCreateExecutionDate,
+  addCreateAttachments,
+  removeCreateAttachment,
   submitComment,
   submitStatusChange,
   assignResponsible,
   setTicketsPage,
   setSearchQuery,
-  setCommentDraft
+  setCommentDraft,
+  myTicketsListSource
 } = useTicketFlow({
   store,
   currentUser,
@@ -93,21 +108,13 @@ const {
   submitBanner
 })
 
-// When the profile changes, the registration form is prefilled from the same source
-// so the user does not re-enter obvious data during the MAX onboarding flow.
-watch(currentUser, (user) => {
-  registrationForm.value = {
-    employeeNumber: registrationForm.value.employeeNumber || '004512',
-    fullName: user?.fullName || '',
-    department: user?.department || '',
-    phone: registrationForm.value.phone || '+7 (999) 123-45-67',
-    comment: registrationForm.value.comment || 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
-  }
-}, { immediate: true })
-
 onMounted(() => {
-  loadAuthProfile()
-  loadTicketLists()
+  bootstrapAuth().then((response) => {
+    const user = response?.data?.user || null
+    if (response?.data?.stage === 'ready' && user?.employeeFound) {
+      loadTicketLists()
+    }
+  })
 })
 
 // This helper switches screens from the top navigation and action buttons.
@@ -119,57 +126,28 @@ function openScreen(screenId) {
 </script>
 
 <template>
-  <div class="prototype-shell">
-    <aside class="overview-panel">
-      <div class="brand-card">
-        <p class="eyebrow">MAX Mini App</p>
-        <h1>ITILIUM service desk prototype</h1>
-        <p class="supporting-text">
-          Статический адаптивный шаблон для показа заказчику. Здесь собраны все ключевые экраны:
-          регистрация, создание заявок, списки, поиск, карточка инцидента, пагинация и состояния загрузки.
-        </p>
-      </div>
-
-      <div class="overview-card">
-        <h2>Навигация по экранам</h2>
-        <div class="screen-grid">
-          <button
-            v-for="screen in screenOptions"
-            :key="screen.id"
-            class="screen-chip"
-            :class="{ active: activeScreen === screen.id }"
-            @click="openScreen(screen.id)"
-          >
-            {{ screen.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="overview-card">
-        <h2>Что уже показано в макете</h2>
-        <ul class="check-list">
-          <li>Приветственный экран mini app</li>
-          <li>Экран профиля MAX пользователя</li>
-          <li>Регистрация, если пользователя нет в ITILIUM</li>
-          <li>Форма создания обычной и маркетинговой заявки</li>
-          <li>Мои заявки и заявки в ответственности</li>
-          <li>Карточка заявки, комментарии и действия</li>
-          <li>Поиск по номеру, пагинация, spinner, empty, error, success</li>
-        </ul>
-      </div>
-    </aside>
-
-    <main class="phone-stage">
+  <main class="phone-stage phone-stage--standalone">
       <div class="phone-frame">
         <header class="app-header">
           <div>
             <p class="eyebrow">MAX x ITILIUM</p>
             <strong>Сервисные заявки</strong>
+            <p v-if="registrationIdentityUserId" class="eyebrow">MAX ID: {{ registrationIdentityUserId }}</p>
           </div>
-          <button class="ghost-button" @click="openScreen('home')">Домой</button>
+          <button
+            v-if="showPrototypeNavigation"
+            class="ghost-button"
+            @click="openScreen('home')"
+          >
+            Домой
+          </button>
         </header>
 
-        <div class="tab-strip">
+        <div v-if="isAuthBootstrapping" class="submit-banner">
+          Проверяем MAX-сессию...
+        </div>
+
+        <div v-if="showPrototypeNavigation" class="tab-strip">
           <button
             v-for="screen in screenOptions"
             :key="screen.id"
@@ -184,12 +162,16 @@ function openScreen(screenId) {
         <HomeScreen
           v-if="activeScreen === 'home'"
           :summary-cards="summaryCards"
+          :max-bridge-state="maxBridgeState"
+          :raw-init-data="rawInitData"
+          :raw-init-data-unsafe-user-id="rawInitDataUnsafeUserId"
           @open-screen="openScreen"
         />
 
         <ProfileScreen
           v-else-if="activeScreen === 'profile'"
           :current-user="currentUser"
+          :current-identity="currentIdentity"
           :profile-initials="profileInitials"
           :profile-status-text="profileStatusText"
           :profile-region="profileRegion"
@@ -198,7 +180,12 @@ function openScreen(screenId) {
 
         <RegistrationScreen
           v-else-if="activeScreen === 'registration'"
+          :current-identity="currentIdentity"
+          :current-user="currentUser"
           :registration-form="registrationForm"
+          :max-bridge-state="maxBridgeState"
+          :raw-init-data="rawInitData"
+          :raw-init-data-unsafe-user-id="rawInitDataUnsafeUserId"
           :auth-errors="authErrors"
           :is-registration-submitting="isRegistrationSubmitting"
           @submit-registration="submitRegistration"
@@ -209,7 +196,11 @@ function openScreen(screenId) {
           :create-ticket-form="createTicketForm"
           :create-errors="createErrors"
           :is-creating-ticket="isCreatingTicket"
+          :available-request-types="availableRequestTypes"
           @submit-create-ticket="submitCreateTicket"
+          @set-execution-date="setCreateExecutionDate"
+          @add-attachments="addCreateAttachments"
+          @remove-attachment="removeCreateAttachment"
           @open-screen="openScreen"
         />
 
@@ -220,6 +211,7 @@ function openScreen(screenId) {
           :paginated-tickets="paginatedTickets"
           :page-count="pageCount"
           :current-tickets-page="currentTicketsPage"
+          :list-source="myTicketsListSource"
           @open-ticket-details="openTicketDetails"
           @set-tickets-page="setTicketsPage"
         />
@@ -266,10 +258,6 @@ function openScreen(screenId) {
           @assign-responsible="assignResponsible"
         />
 
-        <footer class="app-footer">
-          <p>Прототип адаптирован под mobile webview и готов к дальнейшему переносу в реальные API-сценарии.</p>
-        </footer>
-
         <transition name="banner">
           <div v-if="submitBanner" class="submit-banner">
             {{ submitBanner }}
@@ -277,5 +265,4 @@ function openScreen(screenId) {
         </transition>
       </div>
     </main>
-  </div>
 </template>

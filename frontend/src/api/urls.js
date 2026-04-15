@@ -1,4 +1,5 @@
 const urls = {
+  maxAuthValidate: '/api/v1/auth/max/validate',
   registration: '/api/v1/users/register',
   me: '/api/v1/users/me',
   myTickets: '/api/v1/tickets',

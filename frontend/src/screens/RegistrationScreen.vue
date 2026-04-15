@@ -1,7 +1,27 @@
 <script setup>
 defineProps({
+  currentIdentity: {
+    type: Object,
+    default: null
+  },
+  currentUser: {
+    type: Object,
+    default: null
+  },
   registrationForm: {
     type: Object,
+    required: true
+  },
+  maxBridgeState: {
+    type: Object,
+    required: true
+  },
+  rawInitData: {
+    type: String,
+    required: true
+  },
+  rawInitDataUnsafeUserId: {
+    type: String,
     required: true
   },
   authErrors: {
@@ -27,28 +47,74 @@ function submitRegistration() {
   <section class="screen">
     <div class="section-header">
       <div>
-        <p class="eyebrow">Регистрация</p>
+        <p class="eyebrow">MAX авторизация пройдена</p>
         <h2>Вас не нашли в ITILIUM</h2>
       </div>
       <span class="status-pill warning">Требуется заполнение формы</span>
     </div>
 
     <article class="content-card form-card">
+      <div class="compact">
+        <span class="status-pill info">MAX ID: {{ currentIdentity?.userId || currentUser?.userId || registrationForm.employeeNumber || 'не получен' }}</span>
+        <span class="status-pill rose">{{ currentUser?.statusMessage || 'Пользователь не найден в ITILIUM.' }}</span>
+      </div>
+      <div class="debug-panel">
+        <p><strong>window.WebApp:</strong> {{ maxBridgeState.isAvailable ? 'доступен' : 'недоступен' }}</p>
+        <p><strong>initDataUnsafe.user.id:</strong> {{ rawInitDataUnsafeUserId || 'пусто' }}</p>
+        <p><strong>initData length:</strong> {{ rawInitData.length }}</p>
+        <p><strong>initData raw:</strong></p>
+        <pre class="debug-pre">{{ rawInitData || 'ПУСТО' }}</pre>
+      </div>
+      <p class="supporting-text">
+        Заполните данные ниже, чтобы отправить заявку на привязку вашего аккаунта MAX к карточке сотрудника.
+      </p>
       <label>
-        Табельный номер
-        <input v-model="registrationForm.employeeNumber" type="text" />
+        Max Id
+        <input v-model="registrationForm.employeeNumber" type="text" readonly disabled />
       </label>
       <label>
         ФИО
-        <input v-model="registrationForm.fullName" type="text" />
+        <input
+          v-model="registrationForm.fullName"
+          type="text"
+          required
+          placeholder="Введите ФИО"
+        />
       </label>
       <label>
-        Магазин / подразделение
-        <input v-model="registrationForm.department" type="text" />
+        Организация
+        <input
+          v-model="registrationForm.organization"
+          type="text"
+          required
+          placeholder="Введите организацию"
+        />
+      </label>
+      <label>
+        Подразделение
+        <input
+          v-model="registrationForm.department"
+          type="text"
+          required
+          placeholder="Введите подразделение"
+        />
+      </label>
+      <label>
+        Должность
+        <input
+          v-model="registrationForm.position"
+          type="text"
+          required
+          placeholder="Введите должность"
+        />
       </label>
       <label>
         Телефон
-        <input v-model="registrationForm.phone" type="text" />
+        <input
+          v-model="registrationForm.phone"
+          type="text"
+          placeholder="+7 (900) 123-45-67"
+        />
       </label>
       <label>
         Комментарий
