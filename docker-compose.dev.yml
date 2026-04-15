@@ -8,8 +8,14 @@ services:
     environment:
       CONFIG_PATH: /app/config.yml
       APP_ENV: development
-      APP_DEMO_MODE: "true"
+      APP_DEMO_MODE: "false"
       REDIS_ENABLED: "true"
+      AUTH_ACCESS_TOKEN_SECRET: "${AUTH_ACCESS_TOKEN_SECRET:-dev-max-auth-secret}"
+      AUTH_ACCESS_TOKEN_TTL: "${AUTH_ACCESS_TOKEN_TTL:-12h}"
+      AUTH_MAX_INIT_DATA_TTL: "${AUTH_MAX_INIT_DATA_TTL:-10m}"
+      AUTH_ALLOW_DEBUG_IDENTITY_HEADERS: "${AUTH_ALLOW_DEBUG_IDENTITY_HEADERS:-true}"
+      MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
+      ITILIUM_BASE_URL: "${ITILIUM_HOST:-https://10.60.25.121}/itilium-test/hs/Max/"
     volumes:
       - ./:/app
       - ./deploy/config/app.dev.yml:/app/config.yml:ro
@@ -18,6 +24,10 @@ services:
     ports:
       - "3000:3000"
       - "40000:40000"
+    # When DNS for the ITILIUM hostname is unavailable in the container,
+    # uncomment the line below and map the hostname from the certificate to the server IP.
+    # extra_hosts:
+    #   - "itilium-hostname-from-cert:10.60.25.121"
     depends_on:
       - postgres
       - redis

@@ -100,9 +100,18 @@
   "fullName": "string",
   "department": "string",
   "employeeFound": true,
-  "registrationRequired": false
+  "registrationRequired": false,
+  "registrationPending": false,
+  "statusMessage": "string"
 }
 ```
+
+Что важно:
+
+- при `200` backend возвращает профиль найденного пользователя и frontend открывает главный экран
+- при `401` или `404` backend возвращает профиль с `registrationRequired=true`, и frontend открывает экран регистрации
+- при `403` backend возвращает профиль с `registrationPending=true`, и frontend показывает статус о том, что заявка еще на рассмотрении
+- реальный ответ `find_employee` нужно логировать целиком, чтобы зафиксировать полный контракт 1С
 
 #### `POST /api/v1/users/employee`
 
@@ -117,13 +126,13 @@
 ```json
 {
   "identifier": "100245",
-  "attributeCode": "employee"
+  "attributeCode": "id"
 }
 ```
 
 Что важно:
 
-- если `attributeCode` не передан, backend подставляет `employee`
+- если `attributeCode` не передан, backend подставляет `id`
 - если `identifier` не передан, backend берет текущий `userId` из context
 - этот endpoint сделан как отдельный учебный и исследовательский flow
 - он пока не заменяет обычный `GET /api/v1/users/me`
@@ -146,6 +155,12 @@
   "comment": "string"
 }
 ```
+
+Что важно:
+
+- сейчас после отправки формы backend переводит пользователя в состояние `registrationPending=true`
+- frontend после успешной отправки показывает, что заявка еще на рассмотрении
+- следующий шаг интеграции: заменить локальное pending-состояние реальным запросом в 1С, когда будет подтвержден контракт endpoint регистрации
 
 ### Заявки
 

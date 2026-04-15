@@ -8,7 +8,7 @@ app:
   # Service version for local builds.
   version: 0.1.0-dev
   # Demo mode keeps the scaffold usable before the live ITILIUM contract is wired end-to-end.
-  demo_mode: true
+  demo_mode: false
 
 http:
   # Bind host for the HTTP API inside the container.
@@ -22,19 +22,34 @@ http:
   # Keep-alive idle timeout.
   idle_timeout: 60s
 
+auth:
+  # MAX bot token is injected through environment variables after the bot passes moderation.
+  bot_token: ""
+  # Backend bearer tokens are signed with this secret in development.
+  access_token_secret: "dev-max-auth-secret"
+  # Backend access tokens stay short-lived enough for safe local testing.
+  access_token_ttl: 12h
+  # MAX launch payloads should be validated soon after the mini app starts.
+  max_init_data_ttl: 10m
+  # Local browser development may still use X-User-ID before MAX is available.
+  allow_debug_identity_headers: true
+
 logging:
   # Use text logs in development so `docker logs` stays easy to read.
   level: debug
   format: text
 
 itilium:
-  # Base URL is intentionally blank in demo mode.
+  # Base URL is overridden from docker-compose.dev.yml so the target host can live in .env.
   base_url: ""
   # Credentials are supplied through environment variables on live integration.
-  login: ""
-  password: ""
+  login: "tlgrmbot"
+  password: "Yu#5c3LNd5792vZ*"
   # Timeout for outbound ITILIUM requests.
   timeout: 20s
+  # Temporary workaround for a certificate that does not match the direct IP address.
+  # Switch this back to false after moving base_url to the hostname from the certificate.
+  insecure_skip_verify: true
 
 redis:
   # Redis cache host and port used in docker compose.

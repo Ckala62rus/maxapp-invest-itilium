@@ -1,0 +1,17 @@
+---
+description: Preserve working context in a project file between sessions
+alwaysApply: true
+---
+
+# Context Persistence
+
+- Keep a short project context file at `documentation/agent_context.md`.
+- Read `documentation/agent_context.md` before resuming multi-step work when it is relevant.
+- Update `documentation/agent_context.md` after meaningful progress, architectural decisions, debugging discoveries, or changes to the next-step plan.
+- Include only durable context:
+  - current implementation status
+  - important decisions and trade-offs
+  - known blockers and debugging facts
+  - next recommended steps
+- Never store secrets, passwords, tokens, private URLs with credentials, or copied sensitive config values in the context file.
+- Keep the file concise and practical so the next session can continue work quickly.

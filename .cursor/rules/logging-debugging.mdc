@@ -1,0 +1,15 @@
+---
+description: Logging and debugging standards for backend and integration flows
+alwaysApply: true
+---
+
+# Logging And Debugging
+
+- Keep logs useful for step-by-step troubleshooting of auth, onboarding, ITILIUM and ticket flows.
+- At `info` level, log the main business milestones: inbound request summary, identity source, outbound dependency URL, status code, latency, and high-level outcome.
+- At `debug` level, log the detailed decision path: why a branch was chosen, which identity source won, what payload fields were extracted, and request/response bodies when they help diagnose integrations.
+- Prefer structured logs with stable field names so Docker logs can be filtered by request id, user id, route, upstream URL, status, and action.
+- When working on MAX auth, explicitly log whether validation started, whether it succeeded, why it failed, and whether the request used backend bearer auth or a debug fallback.
+- When working on ITILIUM integrations, keep normal logs concise, but in debug mode include the exact endpoint, query/form fields, request body, response body, and mapping decisions.
+- If debugging is active, add enough logs to reconstruct the full flow without attaching a debugger.
+- Avoid logging secrets, bot tokens, Authorization headers, cookies, passwords, or full credentials.
