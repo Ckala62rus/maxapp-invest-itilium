@@ -14,19 +14,10 @@ type MemoryUserRepository struct {
 	profile map[string]models.UserProfile
 }
 
-// NewMemoryUserRepository creates a repository with demo profile data.
+// NewMemoryUserRepository creates an in-memory profile store for registration flows.
 func NewMemoryUserRepository() *MemoryUserRepository {
 	return &MemoryUserRepository{
-		profile: map[string]models.UserProfile{
-			"100245": {
-				UserID:               "100245",
-				Username:             "amaximov",
-				FullName:             "Александр Максимов",
-				Department:           "Магазин 17, Казань",
-				EmployeeFound:        false,
-				RegistrationRequired: true,
-			},
-		},
+		profile: map[string]models.UserProfile{},
 	}
 }
 
@@ -39,7 +30,7 @@ func (r *MemoryUserRepository) GetByUserID(_ context.Context, userID string) (mo
 	return profile, ok
 }
 
-// SaveRegistration stores a synthetic registered profile for demo flows.
+// SaveRegistration stores a local pending-review state for registration flows.
 func (r *MemoryUserRepository) SaveRegistration(_ context.Context, request models.RegistrationRequest) models.UserProfile {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -49,8 +40,10 @@ func (r *MemoryUserRepository) SaveRegistration(_ context.Context, request model
 		Username:             request.UserID,
 		FullName:             request.FullName,
 		Department:           request.Department,
-		EmployeeFound:        true,
+		EmployeeFound:        false,
 		RegistrationRequired: false,
+		RegistrationPending:  true,
+		StatusMessage:        "Ваша заявка на регистрацию еще на рассмотрении.",
 	}
 
 	r.profile[request.UserID] = profile

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/middleware"
 	"github.com/go-chi/chi/v5"
@@ -14,7 +15,16 @@ func (h *Handler) Routes() http.Handler {
 
 	router.Use(middleware.CORS)
 	router.Use(middleware.RequestID)
-	router.Use(middleware.Identity)
+	router.Use(middleware.Identity(h.logger, middleware.AccessTokenClaimsAdapter{
+		ParseFunc: func(token string, now time.Time) (string, error) {
+			claims, err := h.authManager.ParseAccessToken(token, now)
+			if err != nil {
+				return "", err
+			}
+
+			return claims.UserID, nil
+		},
+	}, h.debugIdentity))
 	router.Use(middleware.Recover(h.logger))
 	router.Use(middleware.Metrics)
 	router.Use(middleware.Logging(h.logger))
@@ -24,18 +34,23 @@ func (h *Handler) Routes() http.Handler {
 	router.Handle("/metrics", promhttp.Handler())
 
 	router.Route("/api/v1", func(router chi.Router) {
-		router.Get("/users/me", h.GetProfile)
-		router.Post("/users/register", h.RegisterUser)
-		router.Post("/users/employee", h.FindEmployeeByIdentifier)
-		router.Get("/tickets", h.ListMyTickets)
-		router.Get("/tickets/responsible", h.ListResponsibleTickets)
-		router.Post("/tickets/search", h.SearchTicket)
-		router.Post("/tickets", h.CreateTicket)
-		router.Get("/tickets/{number}", h.GetTicket)
-		router.Post("/tickets/{number}/comments", h.AddComment)
-		router.Post("/tickets/{number}/status", h.ChangeStatus)
-		router.Get("/tickets/{number}/responsibles", h.ListResponsibleOptions)
-		router.Post("/tickets/{number}/responsible", h.ChangeResponsible)
+		router.Post("/auth/max/validate", h.ValidateMaxAuth)
+
+		router.Group(func(router chi.Router) {
+			router.Use(middleware.RequireIdentity)
+			router.Get("/users/me", h.GetProfile)
+			router.Post("/users/register", h.RegisterUser)
+			router.Post("/users/employee", h.FindEmployeeByIdentifier)
+			router.Get("/tickets", h.ListMyTickets)
+			router.Get("/tickets/responsible", h.ListResponsibleTickets)
+			router.Post("/tickets/search", h.SearchTicket)
+			router.Post("/tickets", h.CreateTicket)
+			router.Get("/tickets/{number}", h.GetTicket)
+			router.Post("/tickets/{number}/comments", h.AddComment)
+			router.Post("/tickets/{number}/status", h.ChangeStatus)
+			router.Get("/tickets/{number}/responsibles", h.ListResponsibleOptions)
+			router.Post("/tickets/{number}/responsible", h.ChangeResponsible)
+		})
 	})
 
 	return router

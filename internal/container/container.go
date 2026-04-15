@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/api"
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/auth"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/config"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/handlers"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/repository"
@@ -50,6 +51,7 @@ func Build(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Conta
 
 	cache := repository.NewRedisCache(redisClient)
 	profileRepository := repository.NewMemoryUserRepository()
+	authManager := auth.NewManager(cfg.Auth)
 
 	var itiliumClient services.ItiliumClient
 	var employeeLookupClient services.EmployeeLookupClient
@@ -67,9 +69,17 @@ func Build(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Conta
 		employeeLookupClient = realClient
 	}
 
+	authService := services.NewAuthService(authManager, logger)
 	profileService := services.NewProfileService(profileRepository, employeeLookupClient)
 	ticketService := services.NewTicketService(itiliumClient, cache)
-	handler := handlers.New(logger, profileService, ticketService)
+	handler := handlers.New(
+		logger,
+		authService,
+		authManager,
+		cfg.Auth.AllowDebugIdentityHeaders,
+		profileService,
+		ticketService,
+	)
 
 	return &Container{
 		Config:  cfg,

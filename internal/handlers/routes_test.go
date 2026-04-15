@@ -11,7 +11,7 @@ import (
 func TestRoutesCORSPreflight(t *testing.T) {
 	t.Parallel()
 
-	handler := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
+	handler := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, false, nil, nil)
 	router := handler.Routes()
 
 	request := httptest.NewRequest(http.MethodOptions, "/api/v1/tickets", nil)
@@ -34,7 +34,7 @@ func TestRoutesCORSPreflight(t *testing.T) {
 func TestRoutesCORSActualRequest(t *testing.T) {
 	t.Parallel()
 
-	handler := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
+	handler := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, false, nil, nil)
 	router := handler.Routes()
 
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)

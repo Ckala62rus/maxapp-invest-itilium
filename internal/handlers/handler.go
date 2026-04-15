@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/auth"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/middleware"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/services"
@@ -15,14 +16,27 @@ import (
 // Handler groups the service dependencies used by HTTP endpoints.
 type Handler struct {
 	logger         *slog.Logger
+	authService    *services.AuthService
+	authManager    *auth.Manager
+	debugIdentity  bool
 	profileService *services.ProfileService
 	ticketService  *services.TicketService
 }
 
 // New creates a handler bundle.
-func New(logger *slog.Logger, profileService *services.ProfileService, ticketService *services.TicketService) *Handler {
+func New(
+	logger *slog.Logger,
+	authService *services.AuthService,
+	authManager *auth.Manager,
+	debugIdentity bool,
+	profileService *services.ProfileService,
+	ticketService *services.TicketService,
+) *Handler {
 	return &Handler{
 		logger:         logger,
+		authService:    authService,
+		authManager:    authManager,
+		debugIdentity:  debugIdentity,
 		profileService: profileService,
 		ticketService:  ticketService,
 	}
@@ -78,8 +92,36 @@ func (h *Handler) RegisterUser(writer http.ResponseWriter, request *http.Request
 
 	h.writeJSON(writer, request, http.StatusCreated, models.APIResponse{
 		Success: true,
-		Message: "registration request accepted",
+		Message: "registration request sent for review",
 		Data:    profile,
+	})
+}
+
+// ValidateMaxAuth exchanges signed MAX initData for a backend access token.
+func (h *Handler) ValidateMaxAuth(writer http.ResponseWriter, request *http.Request) {
+	var payload models.MaxAuthValidateRequest
+	if err := decodeJSON(request, &payload); err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.logger.Info(
+		"max auth request received",
+		"request_id", middleware.RequestIDFromContext(request.Context()),
+		"path", request.URL.Path,
+		"init_data_length", len(payload.InitData),
+	)
+
+	response, err := h.authService.ValidateMaxInitData(request.Context(), payload.InitData)
+	if err != nil {
+		h.writeError(writer, request, http.StatusUnauthorized, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "max auth validated",
+		Data:    response,
 	})
 }
 

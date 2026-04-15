@@ -4,6 +4,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,14 +29,30 @@ type Client struct {
 	logger     *slog.Logger
 }
 
+// HTTPStatusError stores an upstream HTTP status so services can branch on 1C workflow states.
+type HTTPStatusError struct {
+	StatusCode int
+}
+
+// Error formats the upstream status into a regular Go error string.
+func (e HTTPStatusError) Error() string {
+	return "itilium request failed with status " + strconv.Itoa(e.StatusCode)
+}
+
 // NewClient creates a real ITILIUM HTTP client.
 func NewClient(cfg config.ItiliumConfig, logger *slog.Logger) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
+
 	return &Client{
 		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
 		login:    cfg.Login,
 		password: cfg.Password,
 		httpClient: &http.Client{
-			Timeout: cfg.Timeout,
+			Timeout:   cfg.Timeout,
+			Transport: transport,
 		},
 		logger: logger,
 	}
@@ -54,7 +72,7 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
 	attributeCode := strings.TrimSpace(request.AttributeCode)
 	if attributeCode == "" {
-		attributeCode = "employee"
+		attributeCode = "id"
 	}
 
 	form := url.Values{}
@@ -71,8 +89,28 @@ func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.Em
 		UUID:                       stringFromAny(payload["UUID"]),
 		ServiceCalls:               stringSliceFromAny(payload["servicecalls"]),
 		CanCreateMarketingRequests: boolFromAny(payload["canCreateMarketingRequests"]),
+		CanCreateDaxRequests:       boolFromAny(payload["canCreateDaxRequests"]),
 		Raw:                        payload,
 	}, nil
+}
+
+// RegisterUser sends a registration request to the legacy ITILIUM registration endpoint.
+func (c *Client) RegisterUser(ctx context.Context, request models.RegistrationRequest) error {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(request.UserID))
+	form.Set("FIO", strings.TrimSpace(request.FullName))
+	form.Set("Organization", strings.TrimSpace(request.Organization))
+	form.Set("Subdivision", strings.TrimSpace(request.Department))
+	form.Set("NamePosition", strings.TrimSpace(request.Position))
+
+	if request.Phone != "" {
+		form.Set("Phone", strings.TrimSpace(request.Phone))
+	}
+	if request.Comment != "" {
+		form.Set("Comment", strings.TrimSpace(request.Comment))
+	}
+
+	return c.doForm(ctx, http.MethodPost, "/registration", form, nil)
 }
 
 // ListResponsibleTickets returns tickets assigned to the current user.
@@ -211,12 +249,19 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 		"url", endpoint.String(),
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
+	)
+	c.logger.Debug(
+		"itilium request details",
+		"method", method,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
 		"request_body", string(raw),
 		"response_body", string(payload),
 	)
 
 	if response.StatusCode >= 400 {
-		return fmt.Errorf("itilium request failed with status %d", response.StatusCode)
+		return HTTPStatusError{StatusCode: response.StatusCode}
 	}
 
 	if responseBody == nil || len(payload) == 0 {
@@ -271,12 +316,19 @@ func (c *Client) doForm(ctx context.Context, method string, path string, form ur
 		"url", endpoint.String(),
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
+	)
+	c.logger.Debug(
+		"itilium form request details",
+		"method", method,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
 		"form_body", encodedForm,
 		"response_body", string(payload),
 	)
 
 	if response.StatusCode >= 400 {
-		return fmt.Errorf("itilium request failed with status %d", response.StatusCode)
+		return HTTPStatusError{StatusCode: response.StatusCode}
 	}
 
 	if responseBody == nil || len(payload) == 0 {
@@ -302,7 +354,7 @@ func NewDemoClient() *DemoClient {
 func (c *DemoClient) FindEmployeeByIdentifier(_ context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
 	attributeCode := strings.TrimSpace(request.AttributeCode)
 	if attributeCode == "" {
-		attributeCode = "employee"
+		attributeCode = "id"
 	}
 
 	return models.EmployeeLookupResult{
@@ -311,14 +363,21 @@ func (c *DemoClient) FindEmployeeByIdentifier(_ context.Context, request models.
 		UUID:                       "demo-employee-uuid",
 		ServiceCalls:               []string{"SC-000245", "SC-000244", "SC-000238"},
 		CanCreateMarketingRequests: true,
+		CanCreateDaxRequests:       true,
 		Raw: map[string]any{
 			"UUID":                       "demo-employee-uuid",
 			"servicecalls":               []string{"SC-000245", "SC-000244", "SC-000238"},
 			"canCreateMarketingRequests": true,
-			"employee":                   request.Identifier,
+			"canCreateDaxRequests":       true,
+			"id":                         request.Identifier,
 			"displayName":                "Александр Максимов",
 		},
 	}, nil
+}
+
+// RegisterUser accepts registration requests in demo mode without external side effects.
+func (c *DemoClient) RegisterUser(_ context.Context, _ models.RegistrationRequest) error {
+	return nil
 }
 
 // ListMyTickets returns a static list of personal tickets.

@@ -17,6 +17,8 @@ type Config struct {
 	App AppConfig `yaml:"app"`
 	// HTTP contains server bind settings and HTTP timeouts.
 	HTTP HTTPConfig `yaml:"http"`
+	// Auth contains MAX mini app validation and backend access token settings.
+	Auth AuthConfig `yaml:"auth"`
 	// Logging contains log formatting settings.
 	Logging LoggingConfig `yaml:"logging"`
 	// Itilium contains external API connection settings.
@@ -53,6 +55,20 @@ type HTTPConfig struct {
 	IdleTimeout time.Duration `yaml:"idle_timeout"`
 }
 
+// AuthConfig stores MAX validation and backend access token settings.
+type AuthConfig struct {
+	// BotToken stores the MAX bot token used to validate WebAppData signatures.
+	BotToken string `yaml:"bot_token"`
+	// AccessTokenSecret stores the HMAC secret for backend bearer tokens.
+	AccessTokenSecret string `yaml:"access_token_secret"`
+	// AccessTokenTTL limits the lifetime of issued backend access tokens.
+	AccessTokenTTL time.Duration `yaml:"access_token_ttl"`
+	// MaxInitDataTTL limits how old MAX initData may be before it is rejected.
+	MaxInitDataTTL time.Duration `yaml:"max_init_data_ttl"`
+	// AllowDebugIdentityHeaders keeps local development possible outside MAX.
+	AllowDebugIdentityHeaders bool `yaml:"allow_debug_identity_headers"`
+}
+
 // LoggingConfig stores logging settings.
 type LoggingConfig struct {
 	// Level controls the minimum log severity.
@@ -71,6 +87,8 @@ type ItiliumConfig struct {
 	Password string `yaml:"password"`
 	// Timeout limits outbound ITILIUM request latency.
 	Timeout time.Duration `yaml:"timeout"`
+	// InsecureSkipVerify disables TLS certificate verification for temporary development setups.
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 
 // RedisConfig stores cache settings.
@@ -147,6 +165,12 @@ func applyEnvOverrides(cfg *Config) {
 	setStringFromEnv(&cfg.App.Version, "APP_VERSION")
 	setBoolFromEnv(&cfg.App.DemoMode, "APP_DEMO_MODE")
 
+	setStringFromEnv(&cfg.Auth.BotToken, "MAX_BOT_TOKEN")
+	setStringFromEnv(&cfg.Auth.AccessTokenSecret, "AUTH_ACCESS_TOKEN_SECRET")
+	setDurationFromEnv(&cfg.Auth.AccessTokenTTL, "AUTH_ACCESS_TOKEN_TTL")
+	setDurationFromEnv(&cfg.Auth.MaxInitDataTTL, "AUTH_MAX_INIT_DATA_TTL")
+	setBoolFromEnv(&cfg.Auth.AllowDebugIdentityHeaders, "AUTH_ALLOW_DEBUG_IDENTITY_HEADERS")
+
 	setStringFromEnv(&cfg.Logging.Level, "LOG_LEVEL")
 	setStringFromEnv(&cfg.Logging.Format, "LOG_FORMAT")
 
@@ -154,6 +178,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStringFromEnv(&cfg.Itilium.Login, "ITILIUM_LOGIN")
 	setStringFromEnv(&cfg.Itilium.Password, "ITILIUM_PASSWORD")
 	setDurationFromEnv(&cfg.Itilium.Timeout, "ITILIUM_TIMEOUT")
+	setBoolFromEnv(&cfg.Itilium.InsecureSkipVerify, "ITILIUM_INSECURE_SKIP_VERIFY")
 
 	setStringFromEnv(&cfg.Redis.Address, "REDIS_ADDRESS")
 	setStringFromEnv(&cfg.Redis.Password, "REDIS_PASSWORD")
