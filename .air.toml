@@ -2,10 +2,14 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -gcflags=\"all=-N -l\" -o ./tmp/maxapp-bot.exe ./cmd/bot"
-bin = "./tmp/maxapp-bot.exe"
-full_bin = "dlv exec ./tmp/maxapp-bot.exe --headless --listen=:40000 --api-version=2 --accept-multiclient --continue"
+cmd = "go build -o ./tmp/maxapp-bot ./cmd/bot"
+bin = "./tmp/maxapp-bot"
+# Run the API directly. Delve is optional — see `.air.debug.toml` and `documentation/local_development.md`.
 include_ext = ["go", "yaml", "yml"]
 exclude_dir = ["frontend", "example", "node_modules", "tmp"]
 delay = 500
 stop_on_error = true
+# Docker Desktop (Windows/macOS): bind mount changes often do not trigger inotify/fsnotify
+# inside the Linux container, so Air never rebuilds. Polling fixes that; interval is ms.
+poll = true
+poll_interval = 500

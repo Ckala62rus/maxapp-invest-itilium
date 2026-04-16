@@ -12,7 +12,8 @@ alwaysApply: true
 - Declare interfaces close to the consumer that depends on them.
 - Keep handlers thin; business logic belongs in services.
 - Keep integrations with external systems behind dedicated clients in `internal/api`.
-- Every exported Go type, field, function and method must have a meaningful comment.
+- Every exported Go type, field, function and method must have a meaningful comment (godoc на английском — для `go doc` и линтеров).
+- В **сервисах** и в **нетривиальной** бизнес-логике (ветвления, интеграции, маппинг статусов) добавляйте **поясняющие комментарии на русском** к шагам алгоритма: что делает блок, зачем условие, куда уходит поток. Цель — быстро понять код без разбора каждой строки; не дублировать очевидное (`i++` и т.п.).
 - Every non-trivial Vue component, composable and action handler must explain the data flow with concise comments.
 - Write tests for business logic and edge cases; avoid low-value snapshot-style tests.
 - Generate mocks from interfaces instead of hand-writing stubs when feasible.

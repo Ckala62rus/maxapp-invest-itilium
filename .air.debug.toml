@@ -1,0 +1,18 @@
+# Remote debug (GoLand): Delve listens on :40000, program runs with --continue so HTTP works
+# without attaching. Global dlv flags MUST be before `exec` (otherwise headless/continue break).
+# Usage: air -c .air.debug.toml
+# Or override compose: command: ["air", "-c", ".air.debug.toml"]
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -gcflags=\"all=-N -l\" -o ./tmp/maxapp-bot ./cmd/bot"
+bin = "./tmp/maxapp-bot"
+full_bin = "dlv --headless --listen=:40000 --api-version=2 --accept-multiclient exec ./tmp/maxapp-bot --continue"
+include_ext = ["go", "yaml", "yml"]
+exclude_dir = ["frontend", "example", "node_modules", "tmp"]
+delay = 500
+stop_on_error = true
+poll = true
+poll_interval = 500

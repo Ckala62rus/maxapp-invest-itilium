@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Dev backend runs through `docker-compose.dev.yml` with `air + dlv` and debug port `40000`.
+- Dev backend runs through `docker-compose.dev.yml` with Air; default `.air.toml` runs the binary without Delve so `:3000` works without GoLand; optional `.air.debug.toml` runs `dlv` on `:40000` with correct global-flag order before `exec`; `.air.toml` uses `poll = true` for Docker Desktop bind mounts.
 - Docker containers are currently started by the user and ready for the next external integration checks.
 - The ITILIUM dev target is built from `ITILIUM_HOST` in `.env` through `docker-compose.dev.yml`.
 - TLS verification is temporarily disabled with `itilium.insecure_skip_verify: true` because the current test host is addressed by IP.
@@ -43,7 +43,7 @@
 
 ## Next Steps
 
-- **User homework (local browser dev):** in `frontend/.env.local` set `VITE_DEV_BACKEND_PROXY_TARGET` to your backend, `VITE_DEBUG_USER_ID=40367639` (or another known ITILIUM id), restart Vite; open the app outside MAX for DevTools. For production-like checks, use real `initData` after bot moderation / HTTPS tunnel.
+- **Local browser dev:** see `documentation/local_development.md` — `frontend/.env.development.local` (`VITE_DEBUG_USER_ID`, optional `VITE_PUBLIC_API_BASE_URL`), Vite proxy to backend on `127.0.0.1:3000`; restart Vite after env changes. For production-like checks, use real `initData` after bot moderation / HTTPS tunnel.
 - Verify `GET /api/v1/users/me` in the real environment and inspect the actual `find_employee` payload in logs/debugger.
 - After bot moderation finishes, raise an HTTPS tunnel through `tuna`, point the Telegram bot to that public URL, and then continue testing through the real bot entrypoint.
 - After bot moderation finishes, set `MAX_BOT_TOKEN`, open the mini app through the real MAX bot, and verify `POST /api/v1/auth/max/validate` with live `window.WebApp.initData`.

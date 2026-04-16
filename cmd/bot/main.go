@@ -16,6 +16,7 @@ import (
 )
 
 func main() {
+	// CONFIG_PATH переопределяют в Docker; локально достаточно YAML из deploy/config.
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "deploy/config/app.dev.yml"
@@ -53,6 +54,7 @@ func main() {
 		}
 	}()
 
+	// Ожидаем SIGINT/SIGTERM, затем мягко закрываем listener.
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

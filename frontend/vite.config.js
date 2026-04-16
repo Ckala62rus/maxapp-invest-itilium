@@ -17,23 +17,23 @@ export default defineConfig(() => {
       port: 5173,
       // Tuna issues dynamic subdomains, so allow the tunnel suffix in development.
       allowedHosts: ['localhost', '127.0.0.1', '.ru.tuna.am'],
-      // Proxy backend routes through the same public tunnel host so MAX WebView
-      // never tries to call localhost:3000 from the client device.
+      // Proxy API to the Go backend. Use 127.0.0.1 when `npm run dev` runs on the host;
+      // inside docker-compose use target `http://backend-dev:3000` (service name on the compose network).
       proxy: {
         '/api': {
-          target: 'http://backend-dev:3000',
+          target: 'http://127.0.0.1:3000',
           changeOrigin: true
         },
         '/healthz': {
-          target: 'http://backend-dev:3000',
+          target: 'http://127.0.0.1:3000',
           changeOrigin: true
         },
         '/readyz': {
-          target: 'http://backend-dev:3000',
+          target: 'http://127.0.0.1:3000',
           changeOrigin: true
         },
         '/metrics': {
-          target: 'http://backend-dev:3000',
+          target: 'http://127.0.0.1:3000',
           changeOrigin: true
         }
       }

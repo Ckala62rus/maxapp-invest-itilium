@@ -58,6 +58,7 @@ docker compose -f docker-compose.dev.yml --profile tools run --rm migrate \
 Подробности см. в `documentation/migrations_and_mocks.md`.
 
 ## Документация
+- `documentation/local_development.md` — локальная разработка (env, Vite, proxy, `go run`)
 - `documentation/aiogram_feature_map.md`
 - `documentation/ui_flows.md`
 - `documentation/system_overview.md`
