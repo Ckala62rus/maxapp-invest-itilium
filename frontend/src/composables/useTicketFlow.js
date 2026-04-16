@@ -5,8 +5,10 @@ import {
   getterTypes as ticketGetterTypes
 } from '@/store/modules/tickets'
 
-// useTicketFlow groups ticket-specific screen state, derived data and actions
-// so App.vue can stay focused on auth bootstrap, layout and screen switching.
+/**
+ * Композабл заявок: списки из API или из servicecalls профиля, карточка, поиск, создание, комментарии.
+ * Содержит запасные статические списки для демо, если store ещё пустой.
+ */
 export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }) {
   const defaultRequestType = 'Заявка в отдел ИТ'
 

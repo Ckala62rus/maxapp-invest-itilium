@@ -5,11 +5,10 @@ import { getItem, removeItem } from '@/helpers/persistenceStorage'
 const env = import.meta.env
 const debugUserId = env.VITE_DEBUG_USER_ID || ''
 
-// Keep API calls relative by default so Vite/nginx can proxy them through the
-// same public origin used by MAX and tunnel providers.
+// По умолчанию относительные URL — Vite proxy или nginx подставляют backend под тем же origin, что и у MAX WebView.
 axios.defaults.baseURL = env.VITE_PUBLIC_API_BASE_URL || ''
 
-// Every request reads the current token from storage to keep auth state centralized.
+// Перед каждым запросом подмешиваем токен из storage; в DEV без токена — опционально X-User-ID для отладки.
 axios.interceptors.request.use((config) => {
   const token = getItem('access_token')
 
@@ -27,7 +26,7 @@ axios.interceptors.request.use((config) => {
   return config
 })
 
-// A shared response interceptor keeps auth redirect behavior identical across modules.
+// 401: сбрасываем токен, чтобы следующий запрос не слал просроченный Bearer.
 axios.interceptors.response.use(undefined, (error) => {
   const location = window.location.pathname
   const status = error?.response?.status

@@ -1,4 +1,5 @@
 <script setup>
+// Форма регистрации сотрудника при registrationRequired / дозаполнение полей.
 defineProps({
   currentIdentity: {
     type: Object,

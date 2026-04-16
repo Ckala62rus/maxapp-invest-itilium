@@ -1,4 +1,5 @@
 <script setup>
+// Профиль MAX / ITILIUM, статусы регистрации, реквизиты из GET /users/me.
 defineProps({
   currentUser: {
     type: Object,

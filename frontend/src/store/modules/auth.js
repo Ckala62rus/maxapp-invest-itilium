@@ -1,3 +1,7 @@
+/**
+ * Vuex-модуль auth: сессия мини-приложения MAX и backend access token.
+ * Цепочка: bootstrap (initData → POST /auth/max/validate → токен в storage) → me (GET /users/me, профиль ITILIUM).
+ */
 import authApi from '@/api/auth'
 import { getItem, removeItem, setItem } from '@/helpers/persistenceStorage'
 
@@ -111,11 +115,13 @@ const mutations = {
 }
 
 const actions = {
+  // Старт приложения: либо восстановить сессию, либо обменять MAX initData на наш bearer token.
   [actionTypes.bootstrap](context, payload) {
     return new Promise((resolve) => {
       context.commit(mutationTypes.bootstrapStart)
 
       const storedToken = getItem('access_token')
+      // Уже есть токен в localStorage и нет нового initData — не дергаем validate повторно (перезагрузка страницы).
       if (storedToken && !payload?.initData) {
         console.info('[auth] bootstrap: using stored backend token')
         context.commit(mutationTypes.bootstrapSuccess, context.state.identity)
@@ -123,6 +129,7 @@ const actions = {
         return
       }
 
+      // Локальная отладка в браузере без MAX: VITE_DEBUG_USER_ID + заголовок X-User-ID на бэкенде.
       if (env.DEV && debugUserId && !payload?.initData) {
         console.info('[auth] bootstrap: using debug user id', {
           userId: debugUserId
@@ -142,6 +149,7 @@ const actions = {
         return
       }
 
+      // Реальный сценарий MAX: без initData с платформы продолжать нельзя.
       if (!payload?.initData) {
         console.warn('[auth] bootstrap: MAX initData is missing')
         context.commit(mutationTypes.bootstrapFail, ['MAX initData недоступен. Откройте приложение из MAX.'])
@@ -155,6 +163,7 @@ const actions = {
       authApi.validateMaxAuth({ initData: payload.initData })
         .then((response) => {
           const data = response?.data?.data || {}
+          // Токен кладём в storage — axios interceptor подставит Authorization на все API.
           if (data.accessToken) {
             setItem('access_token', data.accessToken)
           }
@@ -173,6 +182,7 @@ const actions = {
     })
   },
 
+  // Отправка анкеты регистрации в ITILIUM через backend (после успеха — новый снимок профиля).
   [actionTypes.register](context, payload) {
     return new Promise((resolve) => {
       context.commit(mutationTypes.registrationStart)
@@ -189,6 +199,7 @@ const actions = {
     })
   },
 
+  // Текущий профиль (кэш/ITILIUM): employeeFound, registrationRequired, servicecalls и т.д.
   [actionTypes.me](context) {
     return new Promise((resolve) => {
       context.commit(mutationTypes.meStart)
@@ -207,6 +218,7 @@ const actions = {
 
   [actionTypes.logout](context) {
     return new Promise((resolve) => {
+      // Сбрасываем клиентскую сессию; на сервере отдельного logout может не быть.
       removeItem('access_token')
       context.commit(mutationTypes.logout)
       resolve()

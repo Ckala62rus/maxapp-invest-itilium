@@ -1,3 +1,7 @@
+/**
+ * Vuex-модуль заявок: списки, карточка, поиск, комментарии и смена статуса/ответственного.
+ * Данные приходят из ITILIUM через backend; при успешных мутациях списки на экране синхронизируются с карточкой.
+ */
 import ticketsApi from '@/api/tickets'
 
 const state = {
@@ -75,6 +79,7 @@ export const getterTypes = {
   createError: '[tickets] createError'
 }
 
+// После загрузки полной карточки подменяем краткие поля в «Мои» / «Ответственные» без второго запроса списка.
 function syncTicketSummaryList(list, ticket) {
   if (!ticket?.number) {
     return list
@@ -95,6 +100,7 @@ function syncTicketSummaryList(list, ticket) {
   })
 }
 
+// Новая заявка после создания — в начало списка «Мои», дубликаты по номеру убираем.
 function prependTicketSummary(list, ticket) {
   if (!ticket?.number) {
     return list
@@ -298,8 +304,7 @@ const actions = {
     })
   },
 
-  // Search uses the dedicated backend endpoint but stores the same full
-  // ticket detail model that the direct details endpoint returns.
+  // Поиск по номеру: тот же тип ответа, что и GET карточки — кладём в selectedTicket.
   [actionTypes.searchTicket](context, payload) {
     return new Promise((resolve) => {
       context.commit(mutationTypes.loadTicketDetailsStart)

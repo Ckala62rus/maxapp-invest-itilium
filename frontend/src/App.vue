@@ -1,4 +1,8 @@
 <script setup>
+/**
+ * Корневой layout мини-приложения: после onMounted вызывается bootstrapAuth,
+ * дальше activeScreen переключает экраны (прототип навигации без vue-router).
+ */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 

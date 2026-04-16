@@ -1,4 +1,5 @@
 <script setup>
+// Поиск карточки по номеру (общий Vuex selectedTicket с экраном деталей).
 defineProps({
   searchQuery: {
     type: String,

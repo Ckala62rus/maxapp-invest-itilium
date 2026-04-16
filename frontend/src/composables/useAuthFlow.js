@@ -6,8 +6,10 @@ import {
   getterTypes as authGetterTypes
 } from '@/store/modules/auth'
 
-// useAuthFlow groups auth-backed profile and registration state so App.vue can
-// focus on screen composition while auth interactions stay in one place.
+/**
+ * Композабл авторизации и онбординга: MAX bridge → Vuex bootstrap/me → выбор экрана (профиль / регистрация / home).
+ * App.vue только переключает экраны; вся логика ветвлений по registration* здесь.
+ */
 export function useAuthFlow({ store, activeScreen, submitBanner }) {
   const defaultRegistrationComment = 'Прошу связать мой аккаунт MAX с карточкой сотрудника.'
 
@@ -104,10 +106,12 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
     })
 
     if (!bootstrapResponse?.data?.success) {
+      // Нет валидной сессии — остаёмся на профиле с сообщением об ошибке.
       activeScreen.value = 'profile'
       return bootstrapResponse
     }
 
+    // После успешного validate загружаем профиль и по флагам решаем, куда вести пользователя.
     return store.dispatch(authActionTypes.me)
       .then((response) => {
         const user = response?.data?.data || null

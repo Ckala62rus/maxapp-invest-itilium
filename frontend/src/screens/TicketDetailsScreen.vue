@@ -1,4 +1,5 @@
 <script setup>
+// Карточка: таймлайн, смена статуса, ответственный, комментарии.
 defineProps({
   selectedTicket: {
     type: Object,

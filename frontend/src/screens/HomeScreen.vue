@@ -1,4 +1,5 @@
 <script setup>
+// Главная: сводка и быстрые переходы после успешного онбординга.
 defineProps({
   summaryCards: {
     type: Array,

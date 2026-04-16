@@ -1,4 +1,5 @@
 <script setup>
+// Список «мои заявки»: из API или из servicecalls профиля + пагинация.
 defineProps({
   isLoadingMyTickets: {
     type: Boolean,

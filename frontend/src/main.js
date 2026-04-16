@@ -5,6 +5,5 @@ import App from './App.vue'
 import store from './store'
 import './styles.css'
 
-// The app uses a shared Vuex store so screen state can move out
-// of the prototype component into domain modules step by step.
+// Точка входа: Vue 3 + Element Plus + Vuex (модули auth и tickets).
 createApp(App).use(store).use(ElementPlus).mount('#app')

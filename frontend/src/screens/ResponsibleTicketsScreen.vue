@@ -1,4 +1,5 @@
 <script setup>
+// Заявки, где пользователь указан ответственным.
 defineProps({
   isLoadingResponsibleTickets: {
     type: Boolean,

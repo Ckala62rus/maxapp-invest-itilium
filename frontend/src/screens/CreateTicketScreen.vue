@@ -1,4 +1,5 @@
 <script setup>
+// Создание заявки: тип (ИТ / маркетинг / DAX по флагам профиля), текст, срок.
 import { ElDatePicker } from 'element-plus'
 
 defineProps({

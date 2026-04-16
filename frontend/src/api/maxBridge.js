@@ -2,7 +2,7 @@ function getWebApp() {
   return window.WebApp || null
 }
 
-// getMaxBridgeLaunchData reads MAX bridge launch data without trusting it by itself.
+/** Читает window.WebApp (MAX SDK): initData для бэкенда, initDataUnsafe только для подсказок в UI. */
 export function getMaxBridgeLaunchData() {
   const webApp = getWebApp()
   if (!webApp) {
@@ -20,7 +20,7 @@ export function getMaxBridgeLaunchData() {
   }
 }
 
-// notifyMaxAppReady tells the MAX client that the mini app finished loading.
+/** Сообщить оболочке MAX, что веб-часть готова (скрыть splash и т.п.). */
 export function notifyMaxAppReady() {
   const webApp = getWebApp()
   if (webApp && typeof webApp.ready === 'function') {

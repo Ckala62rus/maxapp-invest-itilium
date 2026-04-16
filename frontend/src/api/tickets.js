@@ -1,47 +1,47 @@
 import axios from '@/api/axios'
 import urls from '@/api/urls'
 
-// listMyTickets loads the current user's own ticket list.
+/** Список «мои заявки». */
 const listMyTickets = () => {
   return axios.get(urls.myTickets)
 }
 
-// createTicket submits the new ticket form and returns the created ticket detail.
+/** Создание заявки, в ответе — полная карточка. */
 const createTicket = (payload) => {
   return axios.post(urls.myTickets, payload)
 }
 
-// listResponsibleTickets loads the list where the current user is responsible.
+/** Заявки, где пользователь в ответственных. */
 const listResponsibleTickets = () => {
   return axios.get(urls.responsibleTickets)
 }
 
-// searchTicket resolves one ticket number into the detailed ticket payload.
+/** Поиск по номеру заявки. */
 const searchTicket = (payload) => {
   return axios.post(urls.searchTicket, payload)
 }
 
-// getTicketDetails loads the detailed card for a selected ticket.
+/** Карточка заявки по номеру из URL/списка. */
 const getTicketDetails = (number) => {
   return axios.get(urls.ticketDetails(number))
 }
 
-// addComment submits a new comment and returns the refreshed ticket detail.
+/** Комментарий к заявке; ответ — обновлённая карточка. */
 const addComment = (number, payload) => {
   return axios.post(urls.ticketComments(number), payload)
 }
 
-// changeStatus submits a workflow transition and returns the refreshed ticket detail.
+/** Смена статуса (workflow). */
 const changeStatus = (number, payload) => {
   return axios.post(urls.ticketStatus(number), payload)
 }
 
-// listResponsibleOptions loads assignable people for the ticket card.
+/** Кандидаты в ответственные для выпадающего списка. */
 const listResponsibleOptions = (number) => {
   return axios.get(urls.ticketResponsibles(number))
 }
 
-// changeResponsible submits a new assignee and returns the refreshed ticket detail.
+/** Назначить ответственного. */
 const changeResponsible = (number, payload) => {
   return axios.post(urls.ticketResponsible(number), payload)
 }

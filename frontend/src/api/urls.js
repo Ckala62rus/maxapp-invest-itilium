@@ -1,3 +1,4 @@
+/** Централизованные пути backend API (совпадают с chi-маршрутами). */
 const urls = {
   maxAuthValidate: '/api/v1/auth/max/validate',
   registration: '/api/v1/users/register',
