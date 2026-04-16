@@ -13,6 +13,7 @@ import (
 func (h *Handler) Routes() http.Handler {
 	router := chi.NewRouter()
 
+	// Порядок важен: CORS → request id → кто пользователь → паника → метрики → лог.
 	router.Use(middleware.CORS)
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Identity(h.logger, middleware.AccessTokenClaimsAdapter{
@@ -34,9 +35,11 @@ func (h *Handler) Routes() http.Handler {
 	router.Handle("/metrics", promhttp.Handler())
 
 	router.Route("/api/v1", func(router chi.Router) {
+		// Обмен MAX initData на backend access token — без RequireIdentity (токена ещё нет).
 		router.Post("/auth/max/validate", h.ValidateMaxAuth)
 
 		router.Group(func(router chi.Router) {
+			// Все методы ниже требуют непустой userId в контексте (Bearer или debug).
 			router.Use(middleware.RequireIdentity)
 			router.Get("/users/me", h.GetProfile)
 			router.Post("/users/register", h.RegisterUser)

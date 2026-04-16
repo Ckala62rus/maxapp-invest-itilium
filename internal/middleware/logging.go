@@ -20,6 +20,7 @@ func (r *responseRecorder) WriteHeader(status int) {
 func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			// Оборачиваем Writer, чтобы после ответа знать фактический HTTP-статус.
 			recorder := &responseRecorder{
 				ResponseWriter: writer,
 				status:         http.StatusOK,

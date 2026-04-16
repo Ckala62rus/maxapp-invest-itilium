@@ -29,6 +29,7 @@ func (c *RedisCache) GetJSON(ctx context.Context, key string, target any) (bool,
 	}
 
 	value, err := c.client.Get(ctx, key).Result()
+	// redis.Nil — ключа нет, это не ошибка, а промах кэша.
 	if err == redis.Nil {
 		return false, nil
 	}
@@ -46,6 +47,7 @@ func (c *RedisCache) GetJSON(ctx context.Context, key string, target any) (bool,
 // SetJSON stores a JSON document in Redis with a TTL.
 func (c *RedisCache) SetJSON(ctx context.Context, key string, value any, ttl time.Duration) error {
 	if !c.enabled {
+		// Redis отключён или недоступен — тихо пропускаем запись, сервис работает без кэша.
 		return nil
 	}
 

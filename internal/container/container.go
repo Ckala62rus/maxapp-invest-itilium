@@ -30,6 +30,7 @@ type Container struct {
 
 // Build creates repositories, services and handlers in one place.
 func Build(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Container, error) {
+	// Опциональное подключение Redis: при ошибке ping не падаем — кэш просто выключен.
 	var redisClient *redis.Client
 	if cfg.Redis.Enabled {
 		redisClient = redis.NewClient(&redis.Options{
@@ -53,6 +54,7 @@ func Build(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Conta
 	profileRepository := repository.NewMemoryUserRepository()
 	authManager := auth.NewManager(cfg.Auth)
 
+	// Один и тот же внешний клиент: и заявки, и find_employee / registration (контракты ITILIUM).
 	var itiliumClient services.ItiliumClient
 	var employeeLookupClient services.EmployeeLookupClient
 	if cfg.App.DemoMode {

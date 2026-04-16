@@ -16,12 +16,14 @@ var allowedCORSOrigins = map[string]struct{}{
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		origin := request.Header.Get("Origin")
+		// Запросы без Origin (например curl, same-origin) — пропускаем без CORS-заголовков.
 		if origin == "" {
 			next.ServeHTTP(writer, request)
 			return
 		}
 
 		if !isAllowedCORSOrigin(origin) {
+			// Preflight с чужого origin — отвечаем 403; обычный запрос пусть идёт дальше (без Allow-Origin).
 			if request.Method == http.MethodOptions {
 				writer.WriteHeader(http.StatusForbidden)
 				return
@@ -39,6 +41,7 @@ func CORS(next http.Handler) http.Handler {
 		headers.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		headers.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-User-ID")
 
+		// OPTIONS обрабатываем здесь, чтобы не гонять preflight в бизнес-хендлеры.
 		if request.Method == http.MethodOptions {
 			writer.WriteHeader(http.StatusNoContent)
 			return

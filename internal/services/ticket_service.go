@@ -55,6 +55,7 @@ func (s *TicketService) ListMyTickets(ctx context.Context, userID string) ([]mod
 		return nil, errors.New("user id is required")
 	}
 
+	// Проксируем в ITILIUM без локальной логики.
 	return s.client.ListMyTickets(ctx, userID)
 }
 
@@ -64,6 +65,7 @@ func (s *TicketService) ListResponsibleTickets(ctx context.Context, userID strin
 		return nil, errors.New("user id is required")
 	}
 
+	// Список заявок, где пользователь указан ответственным.
 	return s.client.ListResponsibleTickets(ctx, userID)
 }
 
@@ -75,6 +77,7 @@ func (s *TicketService) GetTicket(ctx context.Context, userID string, number str
 
 	cacheKey := fmt.Sprintf("ticket:%s:%s", userID, number)
 
+	// Сначала пробуем Redis (если включён): карточка заявки меняется реже, чем её открывают.
 	if s.cache != nil {
 		var cached models.TicketDetail
 		ok, err := s.cache.GetJSON(ctx, cacheKey, &cached)
@@ -89,6 +92,7 @@ func (s *TicketService) GetTicket(ctx context.Context, userID string, number str
 	}
 
 	if s.cache != nil {
+		// Кэшируем ненадолго: статус и комментарии должны подтянуться с новым запросом.
 		_ = s.cache.SetJSON(ctx, cacheKey, ticket, 5*time.Minute)
 	}
 
@@ -107,6 +111,7 @@ func (s *TicketService) CreateTicket(ctx context.Context, request models.CreateT
 		return models.TicketDetail{}, errors.New("description is required")
 	}
 
+	// Создание всегда идёт в ITILIUM; кэш карточки здесь не инвалидируем (ещё нет стабильного номера до ответа).
 	return s.client.CreateTicket(ctx, request)
 }
 
@@ -128,6 +133,7 @@ func (s *TicketService) AddComment(ctx context.Context, number string, request m
 		return models.TicketDetail{}, errors.New("message is required")
 	}
 
+	// Ответ — полная карточка; кэш по этому номеру устареет по TTL сам.
 	return s.client.AddComment(ctx, number, request)
 }
 
@@ -152,6 +158,7 @@ func (s *TicketService) ChangeResponsible(ctx context.Context, number string, re
 		return models.TicketDetail{}, errors.New("responsible id is required")
 	}
 
+	// Смена ответственного в ITILIUM; возвращается обновлённая карточка.
 	return s.client.ChangeResponsible(ctx, number, request)
 }
 
@@ -161,5 +168,6 @@ func (s *TicketService) ListResponsibleOptions(ctx context.Context, userID strin
 		return nil, errors.New("ticket number is required")
 	}
 
+	// Справочник возможных исполнителей для UI (выпадающий список).
 	return s.client.ListResponsibleOptions(ctx, userID, number)
 }

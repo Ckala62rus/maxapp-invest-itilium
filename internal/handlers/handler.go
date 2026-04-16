@@ -60,6 +60,7 @@ func (h *Handler) Ready(writer http.ResponseWriter, request *http.Request) {
 
 // GetProfile returns the current user profile.
 func (h *Handler) GetProfile(writer http.ResponseWriter, request *http.Request) {
+	// userId уже положен middleware Identity (из Bearer или debug).
 	profile, err := h.profileService.GetProfile(request.Context(), middleware.UserIDFromContext(request.Context()))
 	if err != nil {
 		h.writeError(writer, request, http.StatusBadRequest, err)
@@ -80,6 +81,7 @@ func (h *Handler) RegisterUser(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
+	// Если фронт не прислал userId в теле — берём из контекста (тот же MAX id, что и в токене).
 	if payload.UserID == "" {
 		payload.UserID = middleware.UserIDFromContext(request.Context())
 	}
@@ -105,6 +107,7 @@ func (h *Handler) ValidateMaxAuth(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	// Логируем только длину строки — сам initData в лог не пишем (подписанные данные).
 	h.logger.Info(
 		"max auth request received",
 		"request_id", middleware.RequestIDFromContext(request.Context()),
@@ -114,6 +117,7 @@ func (h *Handler) ValidateMaxAuth(writer http.ResponseWriter, request *http.Requ
 
 	response, err := h.authService.ValidateMaxInitData(request.Context(), payload.InitData)
 	if err != nil {
+		// Неверная подпись, просрочка auth_date и т.д. — с точки зрения HTTP это «не авторизован».
 		h.writeError(writer, request, http.StatusUnauthorized, err)
 		return
 	}
@@ -133,6 +137,7 @@ func (h *Handler) FindEmployeeByIdentifier(writer http.ResponseWriter, request *
 		return
 	}
 
+	// Удобно для отладки: пустой identifier → текущий пользователь из токена.
 	if payload.Identifier == "" {
 		payload.Identifier = middleware.UserIDFromContext(request.Context())
 	}
@@ -152,6 +157,7 @@ func (h *Handler) FindEmployeeByIdentifier(writer http.ResponseWriter, request *
 
 // ListMyTickets returns the current user's own tickets.
 func (h *Handler) ListMyTickets(writer http.ResponseWriter, request *http.Request) {
+	// Список «мои заявки» в ITILIUM по userId из токена.
 	tickets, err := h.ticketService.ListMyTickets(request.Context(), middleware.UserIDFromContext(request.Context()))
 	if err != nil {
 		h.writeError(writer, request, http.StatusBadRequest, err)
@@ -163,6 +169,7 @@ func (h *Handler) ListMyTickets(writer http.ResponseWriter, request *http.Reques
 
 // ListResponsibleTickets returns tickets assigned to the current user.
 func (h *Handler) ListResponsibleTickets(writer http.ResponseWriter, request *http.Request) {
+	// Заявки, где пользователь в роли ответственного.
 	tickets, err := h.ticketService.ListResponsibleTickets(request.Context(), middleware.UserIDFromContext(request.Context()))
 	if err != nil {
 		h.writeError(writer, request, http.StatusBadRequest, err)
@@ -180,6 +187,7 @@ func (h *Handler) SearchTicket(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
+	// Инициатор поиска — текущий пользователь (для фильтрации на стороне ITILIUM).
 	if payload.UserID == "" {
 		payload.UserID = middleware.UserIDFromContext(request.Context())
 	}
@@ -201,6 +209,7 @@ func (h *Handler) CreateTicket(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
+	// Автор заявки — текущий пользователь, если не передан явно.
 	if payload.UserID == "" {
 		payload.UserID = middleware.UserIDFromContext(request.Context())
 	}
@@ -221,6 +230,7 @@ func (h *Handler) CreateTicket(writer http.ResponseWriter, request *http.Request
 // GetTicket returns the ticket detail page payload.
 func (h *Handler) GetTicket(writer http.ResponseWriter, request *http.Request) {
 	number := request.PathValue("number")
+	// Карточка с кэшем в TicketService (Redis), ключ включает userId и номер заявки.
 	ticket, err := h.ticketService.GetTicket(request.Context(), middleware.UserIDFromContext(request.Context()), number)
 	if err != nil {
 		h.writeError(writer, request, http.StatusBadRequest, err)
@@ -238,6 +248,7 @@ func (h *Handler) AddComment(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
+	// Кто пишет комментарий — всегда из сессии (не доверяем телу запроса).
 	payload.UserID = middleware.UserIDFromContext(request.Context())
 	ticket, err := h.ticketService.AddComment(request.Context(), request.PathValue("number"), payload)
 	if err != nil {
@@ -286,6 +297,7 @@ func (h *Handler) ChangeResponsible(writer http.ResponseWriter, request *http.Re
 
 // ListResponsibleOptions returns available assignees for the selected ticket.
 func (h *Handler) ListResponsibleOptions(writer http.ResponseWriter, request *http.Request) {
+	// Справочник для смены ответственного по {number} в пути.
 	options, err := h.ticketService.ListResponsibleOptions(
 		request.Context(),
 		middleware.UserIDFromContext(request.Context()),
@@ -301,6 +313,7 @@ func (h *Handler) ListResponsibleOptions(writer http.ResponseWriter, request *ht
 
 // writeJSON returns a successful JSON payload with the current request id.
 func (h *Handler) writeJSON(writer http.ResponseWriter, request *http.Request, status int, payload models.APIResponse) {
+	// requestId в теле дублирует заголовок — удобно для фронта и поддержки.
 	payload.RequestID = middleware.RequestIDFromContext(request.Context())
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
@@ -309,6 +322,7 @@ func (h *Handler) writeJSON(writer http.ResponseWriter, request *http.Request, s
 
 // writeError returns a structured error response.
 func (h *Handler) writeError(writer http.ResponseWriter, request *http.Request, status int, err error) {
+	// Текст ошибки уходит клиенту в message — не добавляйте сюда секреты.
 	h.logger.Warn(
 		"http handler returned error",
 		"request_id", middleware.RequestIDFromContext(request.Context()),

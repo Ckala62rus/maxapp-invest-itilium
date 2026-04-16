@@ -21,6 +21,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			ctx := request.Context()
 			token := bearerTokenFromHeader(request.Header.Get("Authorization"))
+			// 1) Приоритет: валидный Bearer — доверяем userId из нашего access-токена после MAX-валидации.
 			if token != "" && verifier != nil {
 				claims, err := verifier.ParseAccessToken(token, time.Now().UTC())
 				if err == nil && strings.TrimSpace(claims.UserID) != "" {
@@ -45,6 +46,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 				}
 			}
 
+			// 2) Только для локальной отладки: без токена можно передать X-User-ID или ?userId= (если включено в конфиге).
 			if allowDebugHeaders && token == "" {
 				userID := strings.TrimSpace(request.Header.Get("X-User-ID"))
 				if userID == "" {
@@ -63,6 +65,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 				}
 			}
 
+			// Пустой userId в контексте — норма для публичных маршрутов; защищённые отсекает RequireIdentity.
 			if logger != nil && strings.TrimSpace(UserIDFromContext(ctx)) == "" {
 				logger.Debug(
 					"request identity is empty",
@@ -80,6 +83,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 // RequireIdentity blocks protected routes when no trusted user id is present.
 func RequireIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// После Identity userId должен быть в контексте; иначе клиент не прошёл ни токен, ни debug-режим.
 		if strings.TrimSpace(UserIDFromContext(request.Context())) == "" {
 			writeJSON(writer, http.StatusUnauthorized, map[string]any{
 				"success":   false,

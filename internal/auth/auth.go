@@ -80,11 +80,13 @@ func (m *Manager) ValidateInitData(initData string, now time.Time) (ValidateResu
 		return ValidateResult{}, errors.New("max init data is required")
 	}
 
+	// Строка initData — набор key=value, отдельно переданный hash; парсим в map без поля hash.
 	params, providedHash, err := parseInitData(initData)
 	if err != nil {
 		return ValidateResult{}, err
 	}
 
+	// Алгоритм как у Telegram WebApp: secret_key = HMAC_SHA256("WebAppData", bot_token), затем HMAC по отсортированным парам.
 	computedHash := computeInitDataHash(params, m.cfg.BotToken)
 	if !hmac.Equal([]byte(strings.ToLower(providedHash)), []byte(computedHash)) {
 		return ValidateResult{}, errors.New("max init data signature is invalid")
@@ -105,6 +107,7 @@ func (m *Manager) ValidateInitData(initData string, now time.Time) (ValidateResu
 	if maxAge <= 0 {
 		maxAge = 10 * time.Minute
 	}
+	// Небольшой допуск по часам, чтобы не отбраковывать из-за рассинхрона времени.
 	if authDate.After(now.Add(1 * time.Minute)) {
 		return ValidateResult{}, errors.New("max init data auth_date is in the future")
 	}
@@ -145,6 +148,7 @@ func (m *Manager) IssueAccessToken(userID string, now time.Time) (string, Access
 		ttl = 12 * time.Hour
 	}
 
+	// Формат токена: base64url(JSON claims) + "." + HMAC-SHA256(payload, secret), без сторонних библиотек JWT.
 	claims := AccessTokenClaims{
 		UserID:    userID,
 		IssuedAt:  now.UTC().Unix(),
@@ -173,6 +177,7 @@ func (m *Manager) ParseAccessToken(token string, now time.Time) (AccessTokenClai
 		return AccessTokenClaims{}, errors.New("access token format is invalid")
 	}
 
+	// Сверяем подпись константным временем (hmac.Equal), затем проверяем срок действия.
 	expectedSignature := signAccessToken(parts[0], m.cfg.AccessTokenSecret)
 	if !hmac.Equal([]byte(expectedSignature), []byte(parts[1])) {
 		return AccessTokenClaims{}, errors.New("access token signature is invalid")
@@ -203,6 +208,7 @@ func parseInitData(initData string) (map[string]string, string, error) {
 	params := make(map[string]string, len(pairs))
 	var providedHash string
 
+	// Ключ hash выделяем: он не участвует в расчёте подписи полезной нагрузки.
 	for _, pair := range pairs {
 		if strings.TrimSpace(pair) == "" {
 			continue
@@ -248,6 +254,7 @@ func computeInitDataHash(params map[string]string, botToken string) string {
 	}
 	sort.Strings(keys)
 
+	// data_check_string: ключи по алфавиту, строки "key=value" через \n.
 	lines := make([]string, 0, len(keys))
 	for _, key := range keys {
 		lines = append(lines, key+"="+params[key])

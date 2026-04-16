@@ -35,6 +35,7 @@ func (r *MemoryUserRepository) SaveRegistration(_ context.Context, request model
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Персистентного БД-профиля пока нет: держим в памяти флаг «ожидает рассмотрения» для GET /users/me.
 	profile := models.UserProfile{
 		UserID:               request.UserID,
 		Username:             request.UserID,

@@ -33,6 +33,7 @@ func init() {
 // Metrics collects request counters and latency histograms.
 func Metrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// Тот же приём, что в Logging: снимаем фактический статус после next.
 		recorder := &responseRecorder{
 			ResponseWriter: writer,
 			status:         http.StatusOK,

@@ -42,35 +42,44 @@ func NewProfileService(repository ProfileRepository, lookupClient EmployeeLookup
 
 // GetProfile returns the profile snapshot for a MAX user.
 func (s *ProfileService) GetProfile(ctx context.Context, userID string) (models.UserProfile, error) {
+	// Пустой идентификатор с MAX недопустим для построения профиля.
 	if strings.TrimSpace(userID) == "" {
 		return models.UserProfile{}, errors.New("user id is required")
 	}
 
+	// Локальный кэш: если уже сохранён финальный профиль (сотрудник в ITILIUM подтверждён)
+	// или известно, что заявка на регистрацию висит на модерации — не дергаем ITILIUM повторно.
 	if profile, ok := s.repository.GetByUserID(ctx, userID); ok && ((profile.EmployeeFound && !profile.RegistrationRequired) || profile.RegistrationPending) {
 		return profile, nil
 	}
 
+	// Живой поиск в ITILIUM по MAX user id (если интеграция подключена).
 	if s.lookupClient != nil {
 		lookup, err := s.FindEmployeeByIdentifier(ctx, models.EmployeeLookupRequest{
 			Identifier: userID,
 		})
 		if err != nil {
+			// Ошибка с HTTP-статусом: часть кодов переводим в понятные для UI состояния (регистрация / ожидание).
 			if profile, ok := profileFromLookupError(userID, err); ok {
 				return profile, nil
 			}
+			// Неизвестная ошибка — пробрасываем наверх.
 			return models.UserProfile{}, err
 		}
 
+		// Ответ find_employee успешно разобран — собираем профиль из полей ITILIUM.
 		if profile, ok := profileFromLookup(userID, lookup); ok {
 			return profile, nil
 		}
 	}
 
+	// Нет данных в репозитории, ITILIUM не вернул сотрудника или клиент выключен — шаблон «нужна регистрация».
 	return fallbackProfile(userID), nil
 }
 
 // Register stores a registration request and returns the newly linked profile snapshot.
 func (s *ProfileService) Register(ctx context.Context, request models.RegistrationRequest) (models.UserProfile, error) {
+	// Обязательные поля формы: без них ITILIUM не примет заявку.
 	if strings.TrimSpace(request.UserID) == "" {
 		return models.UserProfile{}, errors.New("user id is required")
 	}
@@ -90,10 +99,12 @@ func (s *ProfileService) Register(ctx context.Context, request models.Registrati
 		return models.UserProfile{}, errors.New("employee lookup client is not configured")
 	}
 
+	// Сначала отправляем регистрацию во внешнюю систему; при ошибке локально ничего не фиксируем.
 	if err := s.lookupClient.RegisterUser(ctx, request); err != nil {
 		return models.UserProfile{}, err
 	}
 
+	// Успех: сохраняем в памяти состояние «заявка на рассмотрении» для последующих GET /users/me.
 	return s.repository.SaveRegistration(ctx, request), nil
 }
 
@@ -102,6 +113,7 @@ func (s *ProfileService) FindEmployeeByIdentifier(ctx context.Context, request m
 	if strings.TrimSpace(request.Identifier) == "" {
 		return models.EmployeeLookupResult{}, errors.New("identifier is required")
 	}
+	// По умолчанию ищем по полю id (контракт legacy find_employee).
 	if strings.TrimSpace(request.AttributeCode) == "" {
 		request.AttributeCode = "id"
 	}
@@ -114,6 +126,7 @@ func (s *ProfileService) FindEmployeeByIdentifier(ctx context.Context, request m
 
 // profileFromLookup converts a normalized employee lookup payload into the main profile response.
 func profileFromLookup(userID string, lookup models.EmployeeLookupResult) (models.UserProfile, bool) {
+	// Имена полей в Raw могут отличаться между версиями 1C — перебираем несколько ключей.
 	firstName := firstLookupValue(lookup.Raw, "firstName")
 	lastName := firstLookupValue(lookup.Raw, "lastName")
 	middleName := firstLookupValue(lookup.Raw, "middleName")
@@ -126,11 +139,13 @@ func profileFromLookup(userID string, lookup models.EmployeeLookupResult) (model
 	organization := firstLookupValue(lookup.Raw, "OU", "organization", "Organization")
 	position := firstLookupValue(lookup.Raw, "post", "position", "NamePosition")
 
+	// Если нет ни UUID, ни ФИО/подразделения, ни заявок — считаем, что сотрудника «не нашли».
 	found := strings.TrimSpace(lookup.UUID) != "" || fullName != "" || department != "" || len(lookup.ServiceCalls) > 0
 	if !found {
 		return models.UserProfile{}, false
 	}
 
+	// Заполняем обязательные для UI строки дефолтами.
 	if username == "" {
 		username = userID
 	}
@@ -161,6 +176,7 @@ func profileFromLookup(userID string, lookup models.EmployeeLookupResult) (model
 
 // fallbackProfile keeps the mini app usable when ITILIUM does not know the current user yet.
 func fallbackProfile(userID string) models.UserProfile {
+	// Минимальный профиль: фронт показывает экран регистрации по флагам ниже.
 	return models.UserProfile{
 		UserID:               userID,
 		Username:             userID,
@@ -175,14 +191,17 @@ func fallbackProfile(userID string) models.UserProfile {
 // profileFromLookupError converts known ITILIUM status codes into UI-friendly onboarding states.
 func profileFromLookupError(userID string, err error) (models.UserProfile, bool) {
 	var statusErr api.HTTPStatusError
+	// Не HTTP-ошибка ITILIUM — отдаём управление выше (сетевая ошибка и т.д.).
 	if !errors.As(err, &statusErr) {
 		return models.UserProfile{}, false
 	}
 
 	switch statusErr.StatusCode {
 	case 401, 404:
+		// Типичный ответ 1C: пользователь не найден → нужна регистрация.
 		return fallbackProfile(userID), true
 	case 403:
+		// Обычно «заявка уже отправлена и ждёт модерации».
 		return models.UserProfile{
 			UserID:               userID,
 			Username:             userID,
@@ -194,6 +213,7 @@ func profileFromLookupError(userID string, err error) (models.UserProfile, bool)
 			StatusMessage:        "Ваша заявка на регистрацию еще на рассмотрении.",
 		}, true
 	default:
+		// Прочие коды (5xx и т.д.) не маппим в профиль — пусть уйдут как ошибка.
 		return models.UserProfile{}, false
 	}
 }
@@ -217,6 +237,7 @@ func firstLookupValue(raw map[string]any, keys ...string) string {
 
 // stringFromLookupValue converts dynamic ITILIUM fields into strings without panics.
 func stringFromLookupValue(value any) string {
+	// Сейчас поддерживаем только строки; остальное игнорируем, чтобы не падать на неожиданных типах.
 	switch converted := value.(type) {
 	case string:
 		return converted

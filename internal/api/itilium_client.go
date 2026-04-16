@@ -75,6 +75,7 @@ func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.Em
 		attributeCode = "id"
 	}
 
+	// Legacy: одно поле формы — искомое значение (например id=<MAX user id>).
 	form := url.Values{}
 	form.Set(attributeCode, request.Identifier)
 
@@ -83,6 +84,7 @@ func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.Em
 		return models.EmployeeLookupResult{}, err
 	}
 
+	// Остальные поля остаются в Raw для гибкого маппинга на сервисе.
 	return models.EmployeeLookupResult{
 		Identifier:                 request.Identifier,
 		AttributeCode:              attributeCode,
@@ -96,6 +98,7 @@ func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.Em
 
 // RegisterUser sends a registration request to the legacy ITILIUM registration endpoint.
 func (c *Client) RegisterUser(ctx context.Context, request models.RegistrationRequest) error {
+	// Имена полей заданы контрактом 1C (FIO, Subdivision, NamePosition, …).
 	form := url.Values{}
 	form.Set("id", strings.TrimSpace(request.UserID))
 	form.Set("FIO", strings.TrimSpace(request.FullName))
@@ -199,6 +202,7 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 		return errors.New("itilium base url is required")
 	}
 
+	// baseURL уже без завершающего слэша; path начинается с /…
 	endpoint, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return fmt.Errorf("parse itilium url: %w", err)
@@ -260,6 +264,7 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 		"response_body", string(payload),
 	)
 
+	// 4xx/5xx отдаём сервису как HTTPStatusError — там решается UI (регистрация, ожидание и т.д.).
 	if response.StatusCode >= 400 {
 		return HTTPStatusError{StatusCode: response.StatusCode}
 	}
@@ -281,6 +286,7 @@ func (c *Client) doForm(ctx context.Context, method string, path string, form ur
 		return errors.New("itilium base url is required")
 	}
 
+	// Тело — application/x-www-form-urlencoded, Basic Auth как в doJSON.
 	endpoint, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return fmt.Errorf("parse itilium url: %w", err)
@@ -327,6 +333,7 @@ func (c *Client) doForm(ctx context.Context, method string, path string, form ur
 		"response_body", string(payload),
 	)
 
+	// Та же семантика, что в doJSON: ошибочный статус — для ветвления в ProfileService.
 	if response.StatusCode >= 400 {
 		return HTTPStatusError{StatusCode: response.StatusCode}
 	}

@@ -34,6 +34,7 @@ func (s *AuthService) ValidateMaxInitData(_ context.Context, initData string) (m
 		return models.MaxAuthValidateResponse{}, errors.New("max init data is required")
 	}
 
+	// Дальше: проверка подписи WebAppData на бэкенде и выпуск собственного JWT-подобного токена сессии.
 	if s.logger != nil {
 		s.logger.Info(
 			"max auth validation started",
@@ -42,6 +43,7 @@ func (s *AuthService) ValidateMaxInitData(_ context.Context, initData string) (m
 	}
 
 	now := time.Now().UTC()
+	// ValidateInitData: HMAC, свежесть auth_date, разбор user из JSON.
 	result, err := s.manager.ValidateInitData(initData, now)
 	if err != nil {
 		if s.logger != nil {
@@ -54,6 +56,7 @@ func (s *AuthService) ValidateMaxInitData(_ context.Context, initData string) (m
 		return models.MaxAuthValidateResponse{}, err
 	}
 
+	// Подписываем claims секретом приложения — это то, что потом проверяет middleware Identity.
 	accessToken, claims, err := s.manager.IssueAccessToken(result.User.ID, now)
 	if err != nil {
 		if s.logger != nil {
@@ -82,6 +85,7 @@ func (s *AuthService) ValidateMaxInitData(_ context.Context, initData string) (m
 		)
 	}
 
+	// Фронт кладёт accessToken в Authorization и использует identity для отображения ФИО до загрузки профиля ITILIUM.
 	return models.MaxAuthValidateResponse{
 		AccessToken: accessToken,
 		ExpiresAt:   claims.ExpiresAt,

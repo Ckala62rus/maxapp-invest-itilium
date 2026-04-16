@@ -12,6 +12,7 @@ import (
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			// Любая паника в хендлере превращается в 500 JSON, чтобы клиент не получал обрыв соединения.
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					logger.Error(

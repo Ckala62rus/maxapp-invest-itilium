@@ -26,7 +26,7 @@ type UserProfile struct {
 	// CanCreateMarketingRequests tells the UI whether marketing request flows should be available.
 	CanCreateMarketingRequests bool `json:"canCreateMarketingRequests,omitempty"`
 	// CanCreateDaxRequests tells the UI whether DAX request flows should be available.
-	CanCreateDaxRequests bool `json:"canCreateDaxRequests,omitempty"`
+	CanCreateDaxRequests bool `json:"canCreateDaxRequests"`
 	// EmployeeFound shows whether ITILIUM already knows this user.
 	EmployeeFound bool `json:"employeeFound"`
 	// RegistrationRequired tells the UI to open the registration form.

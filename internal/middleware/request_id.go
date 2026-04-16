@@ -10,6 +10,7 @@ import (
 // RequestID injects a correlation id into every request and response.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// Прокси может уже проставить X-Request-ID — сохраняем для сквозной трассировки.
 		requestID := request.Header.Get("X-Request-ID")
 		if requestID == "" {
 			requestID = uuid.NewString()
