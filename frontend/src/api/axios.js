@@ -5,8 +5,8 @@ import { getItem, removeItem } from '@/helpers/persistenceStorage'
 const env = import.meta.env
 const debugUserId = env.VITE_DEBUG_USER_ID || ''
 
-// По умолчанию относительные URL — Vite proxy или nginx подставляют backend под тем же origin, что и у MAX WebView.
-axios.defaults.baseURL = env.VITE_PUBLIC_API_BASE_URL || ''
+// По умолчанию ходим напрямую в локальный backend без Vite proxy.
+axios.defaults.baseURL = env.VITE_PUBLIC_API_BASE_URL || 'http://127.0.0.1:3000'
 
 // Перед каждым запросом подмешиваем токен из storage; в DEV без токена — опционально X-User-ID для отладки.
 axios.interceptors.request.use((config) => {

@@ -29,10 +29,10 @@
 ### Backend в Docker: обычный запуск и отладка (Air / Delve / GoLand)
 
 - По умолчанию **`air`** читает **`.air.toml`**: собирает бинарник и **запускает его без Delve** — API на `:3000` доступен сразу, без подключения GoLand.
-- Для **удалённой отладки** используйте **`.air.debug.toml`**: Delve слушает **`:40000`**, сборка с `-gcflags="all=-N -l"`. Глобальные флаги `dlv` должны стоять **до** `exec` (см. файл), иначе headless-сессия ведёт себя как «жду отладчик», и HTTP не поднимается, пока не подключите IDE.
-  - Вручную в контейнере: `air -c .air.debug.toml`
-  - Или переопределите команду сервиса в compose: `command: ["air", "-c", ".air.debug.toml"]`
-- В GoLand: **Run → Attach to Process** / remote на `localhost:40000` (порт проброшен в `docker-compose.dev.yml`).
+- Для **удалённой отладки** используйте **`.air.debug.toml`**: Delve в контейнере слушает **`:40000`**, наружу в Windows пробрасывается на **`localhost:40100`** (в `docker-compose.dev.yml`), сборка с `-gcflags="all=-N -l"`. Для `dlv exec` флаг `--continue` должен быть перед путём к бинарнику (`exec --continue ./tmp/maxapp-bot`), иначе headless-сессия ведёт себя как «жду отладчик», и HTTP не поднимается, пока не подключите IDE.
+  - Через compose (рекомендуется): в PowerShell перед запуском задайте `$env:AIR_CONFIG='.air.debug.toml'`, затем `docker compose -f docker-compose.dev.yml up -d --force-recreate backend-dev`.
+  - В обычный режим вернуться так: `$env:AIR_CONFIG='.air.toml'` и повторить `up -d --force-recreate backend-dev`.
+- В GoLand: **Run → Attach to Process** / remote на `localhost:40100` (порт проброшен в `docker-compose.dev.yml`).
 
 ### Опционально: переменные только для фронта (Vite)
 
@@ -101,4 +101,4 @@ docker compose -f docker-compose.dev.yml up --build -d
 - **Backend недоступен на 3000** — контейнер `backend-dev` не запущен или порт занят.  
 - **CORS при прямом URL на API** — разрешены `http://localhost:5173` и `http://127.0.0.1:5173`; при другом origin добавьте правило в `internal/middleware/cors.go`.
 - **В Docker меняете Go-код, а `backend-dev` не пересобирается** — на Docker Desktop (Windows/macOS) события с хоста через bind mount часто не доходят до watcher’а внутри Linux-контейнера. В `.air.toml` включён **`poll = true`** (периодическая проверка файлов), после правок перезапустите контейнер `backend-dev`, чтобы подхватить конфиг. Если бэкенд запускаете **`go run ./cmd/bot` на хосте**, hot reload нет — перезапускайте процесс вручную или используйте `air` локально.
-- **API не отвечает, пока не подключите отладку в GoLand** — раньше в `.air.toml` Delve запускался с флагами **после** пути к бинарнику; так ломается headless-режим. Сейчас по умолчанию Delve **не** используется; для отладки см. **`.air.debug.toml`** и блок выше.
+- **API не отвечает, пока не подключите отладку в GoLand** — проверьте `.air.debug.toml`: у `dlv exec` флаг `--continue` должен идти **до** пути к бинарнику (`exec --continue ./tmp/maxapp-bot`), иначе Delve ждёт attach и не запускает HTTP до подключения IDE.
