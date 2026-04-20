@@ -4,8 +4,11 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/auth"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/middleware"
@@ -201,12 +204,95 @@ func (h *Handler) SearchTicket(writer http.ResponseWriter, request *http.Request
 	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: ticket})
 }
 
+// Лимиты тела multipart при создании заявки: защита от OOM и злоупотреблений по числу/размеру файлов.
+const (
+	maxCreateTicketMultipartMemory = 32 << 20 // весь multipart в памяти до ~32 MiB
+	maxAttachmentSize              = 15 << 20 // один файл не больше ~15 MiB
+	maxAttachmentCount             = 20        // не больше 20 вложений за один запрос
+)
+
 // CreateTicket creates a new ticket through the service layer.
 func (h *Handler) CreateTicket(writer http.ResponseWriter, request *http.Request) {
 	var payload models.CreateTicketRequest
-	if err := decodeJSON(request, &payload); err != nil {
-		h.writeError(writer, request, http.StatusBadRequest, err)
-		return
+
+	ct := request.Header.Get("Content-Type")
+	// Фронт с вложениями шлёт multipart: поле payload (JSON) + повторяющиеся части attachments (файлы).
+	// Без файлов остаётся прежний JSON — совместимость со старыми клиентами.
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := request.ParseMultipartForm(maxCreateTicketMultipartMemory); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+
+		payloadStr := request.FormValue("payload")
+		if strings.TrimSpace(payloadStr) == "" {
+			h.writeError(writer, request, http.StatusBadRequest, errors.New("payload field is required for multipart create"))
+			return
+		}
+
+		if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+
+		if request.MultipartForm == nil {
+			h.writeError(writer, request, http.StatusBadRequest, errors.New("multipart form is empty"))
+			return
+		}
+
+		files := request.MultipartForm.File["attachments"]
+		if len(files) > maxAttachmentCount {
+			h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("too many attachments (max %d)", maxAttachmentCount))
+			return
+		}
+
+		// Имена и сырые байты заполняем заново из фактически загруженных частей формы.
+		payload.Attachments = nil
+		payload.FileAttachments = nil
+
+		for _, fh := range files {
+			if fh.Size > maxAttachmentSize {
+				h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("attachment %q exceeds size limit", fh.Filename))
+				return
+			}
+
+			f, err := fh.Open()
+			if err != nil {
+				h.writeError(writer, request, http.StatusBadRequest, err)
+				return
+			}
+
+			// LimitReader(+1): если прочитали больше лимита — отклоняем даже при заниженном fh.Size.
+			data, err := io.ReadAll(io.LimitReader(f, maxAttachmentSize+1))
+			_ = f.Close()
+			if err != nil {
+				h.writeError(writer, request, http.StatusBadRequest, err)
+				return
+			}
+
+			if int64(len(data)) > maxAttachmentSize {
+				h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("attachment %q exceeds size limit", fh.Filename))
+				return
+			}
+
+			ctype := fh.Header.Get("Content-Type")
+			if ctype == "" {
+				ctype = http.DetectContentType(data)
+			}
+
+			payload.FileAttachments = append(payload.FileAttachments, models.FileAttachment{
+				Filename:    fh.Filename,
+				ContentType: ctype,
+				Data:        data,
+			})
+			payload.Attachments = append(payload.Attachments, fh.Filename)
+		}
+	} else {
+		// Обычное создание без файлов: одно тело application/json.
+		if err := decodeJSON(request, &payload); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
 	}
 
 	// Автор заявки — текущий пользователь, если не передан явно.
