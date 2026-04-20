@@ -29,6 +29,15 @@ func main() {
 	}
 
 	logger := applogger.New(cfg.Logging)
+	// В text-логах slog уровень виден как level=DEBUG, а не слово «debug» внутри msg. debug_enabled — фактическая проверка.
+	logger.Info(
+		"logging configured",
+		"level", cfg.Logging.Level,
+		"format", cfg.Logging.Format,
+		"debug_enabled", logger.Enabled(context.Background(), slog.LevelDebug),
+	)
+	logger.Debug("slog debug level is active (this line appears only when level=debug)")
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
