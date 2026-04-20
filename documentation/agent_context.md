@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Dev backend runs through `docker-compose.dev.yml` with Air; default `.air.toml` runs the binary without Delve so `:3000` works without GoLand; optional `.air.debug.toml` runs `dlv` on `:40000` with correct global-flag order before `exec`; `.air.toml` uses `poll = true` for Docker Desktop bind mounts.
+- Dev backend runs through `docker-compose.dev.yml` with Air; default `.air.toml` runs the binary without Delve so `:3000` works without GoLand; optional `.air.debug.toml` runs `dlv` on container `:40000`, published to host `localhost:40100` (Windows `excludedportrange` blocked `40000`); `.air.toml` uses `poll = true` for Docker Desktop bind mounts.
 - Docker containers are currently started by the user and ready for the next external integration checks.
 - The ITILIUM dev target is built from `ITILIUM_HOST` in `.env` through `docker-compose.dev.yml`.
 - TLS verification is temporarily disabled with `itilium.insecure_skip_verify: true` because the current test host is addressed by IP.
@@ -52,4 +52,4 @@
 - If the live payload field names differ, update `profileFromLookup(...)` mapping in `internal/services/profile_service.go`.
 - If the MAX production flow works, remove the last dev fallback dependency on `X-User-ID` by switching `auth.allow_debug_identity_headers` off outside local debugging.
 - Submit a live registration request and inspect backend logs for the exact upstream status and response body from `POST /registration`.
-- Break the accumulated changes into several small Russian commits tomorrow; do not include local `config.yml`.
+- Recent accumulated changes were split into small thematic commits and pushed to `origin/main`; local empty `config.yml` was deleted.
