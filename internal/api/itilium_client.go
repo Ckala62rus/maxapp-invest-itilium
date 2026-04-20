@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -136,14 +137,234 @@ func (c *Client) GetTicket(ctx context.Context, userID string, number string) (m
 	return response, nil
 }
 
+// pathCreateSC — HTTP-сервис 1С «создать заявку» (согласовано: id, shortDescription, description, files).
+const pathCreateSC = "/create_sc"
+
 // CreateTicket sends a create request to ITILIUM.
 func (c *Client) CreateTicket(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
-	var response models.TicketDetail
-	if err := c.doJSON(ctx, http.MethodPost, "/tickets", nil, request, &response); err != nil {
-		return models.TicketDetail{}, err
+	if len(request.FileAttachments) == 0 {
+		// Без файлов — классическая форма application/x-www-form-urlencoded.
+		form := url.Values{}
+		form.Set("id", strings.TrimSpace(request.UserID))
+		form.Set("shortDescription", strings.TrimSpace(request.Title))
+		form.Set("description", buildCreateSCLongDescription(request))
+
+		payload, err := c.doFormPostBytes(ctx, pathCreateSC, form)
+		if err != nil {
+			return models.TicketDetail{}, err
+		}
+
+		return parseCreateSCResponse(payload, request)
 	}
 
-	return response, nil
+	// С вложениями — multipart: те же поля + повторяющиеся части files (как в 1С).
+	return c.doCreateSCMultipart(ctx, request)
+}
+
+func buildCreateSCLongDescription(req models.CreateTicketRequest) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(req.Description))
+	var extra []string
+	if t := strings.TrimSpace(req.RequestType); t != "" {
+		extra = append(extra, "Тип: "+t)
+	}
+	if t := strings.TrimSpace(req.Department); t != "" {
+		extra = append(extra, "Подразделение: "+t)
+	}
+	if t := strings.TrimSpace(req.ExecutionDate); t != "" {
+		extra = append(extra, "Исполнить до: "+t)
+	}
+	if len(extra) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(strings.Join(extra, "\n"))
+	}
+	return b.String()
+}
+
+func parseCreateSCResponse(payload []byte, req models.CreateTicketRequest) (models.TicketDetail, error) {
+	payload = bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	if len(strings.TrimSpace(string(payload))) == 0 {
+		return ticketDetailCreateSCFallback(req), nil
+	}
+
+	var detail models.TicketDetail
+	if err := json.Unmarshal(payload, &detail); err == nil && strings.TrimSpace(detail.Number+detail.Title) != "" {
+		if detail.Title == "" {
+			detail.Title = req.Title
+		}
+		if detail.Description == "" {
+			detail.Description = req.Description
+		}
+		if detail.State == "" {
+			detail.State = "Зарегистрирована"
+		}
+		return detail, nil
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(payload, &m); err != nil {
+		return models.TicketDetail{}, fmt.Errorf("decode create_sc response: %w", err)
+	}
+
+	if len(m) == 0 {
+		return ticketDetailCreateSCFallback(req), nil
+	}
+
+	detail = models.TicketDetail{
+		Number:            pickStringFromMap(m, "number", "Number", "sc", "Номер", "ServiceCallNumber"),
+		Title:             pickStringFromMap(m, "title", "Title", "shortDescription", "ShortDescription"),
+		Description:       pickStringFromMap(m, "description", "Description"),
+		State:             pickStringFromMap(m, "state", "State", "status", "Status"),
+		Deadline:          pickStringFromMap(m, "deadline", "Deadline", "executionDate"),
+		ResponsibleTeam:   pickStringFromMap(m, "responsibleTeam", "ResponsibleTeam", "OU", "client"),
+		CanChangeResponsible: boolFromAny(m["canChangeResponsible"]),
+	}
+	if detail.Title == "" {
+		detail.Title = req.Title
+	}
+	if detail.Description == "" {
+		detail.Description = req.Description
+	}
+	if detail.State == "" {
+		detail.State = "Зарегистрирована"
+	}
+	if detail.Deadline == "" {
+		detail.Deadline = req.ExecutionDate
+	}
+	return detail, nil
+}
+
+func ticketDetailCreateSCFallback(req models.CreateTicketRequest) models.TicketDetail {
+	return models.TicketDetail{
+		Title:                req.Title,
+		Description:          req.Description,
+		State:                "Зарегистрирована",
+		Deadline:             req.ExecutionDate,
+		ResponsibleTeam:      req.Department,
+		CanChangeResponsible: true,
+		Timeline: []models.CommentEntry{
+			{Author: "Система", Message: "Заявка передана в ITILIUM (ответ create_sc без тела или пустой).", CreatedAt: time.Now().Format(time.RFC3339)},
+		},
+	}
+}
+
+func pickStringFromMap(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		v, ok := m[k]
+		if !ok || v == nil {
+			continue
+		}
+		s := strings.TrimSpace(fmt.Sprint(v))
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// doCreateSCMultipart отправляет create_sc с полями id, shortDescription, description и файлами в частях files.
+func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
+	if c.baseURL == "" {
+		return models.TicketDetail{}, errors.New("itilium base url is required")
+	}
+
+	body := &bytes.Buffer{}
+	mp := multipart.NewWriter(body)
+
+	if err := mp.WriteField("id", strings.TrimSpace(request.UserID)); err != nil {
+		return models.TicketDetail{}, fmt.Errorf("write id: %w", err)
+	}
+	if err := mp.WriteField("shortDescription", strings.TrimSpace(request.Title)); err != nil {
+		return models.TicketDetail{}, fmt.Errorf("write shortDescription: %w", err)
+	}
+	if err := mp.WriteField("description", buildCreateSCLongDescription(request)); err != nil {
+		return models.TicketDetail{}, fmt.Errorf("write description: %w", err)
+	}
+
+	for _, fa := range request.FileAttachments {
+		part, err := mp.CreateFormFile("files", fa.Filename)
+		if err != nil {
+			return models.TicketDetail{}, fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := part.Write(fa.Data); err != nil {
+			return models.TicketDetail{}, fmt.Errorf("write file: %w", err)
+		}
+	}
+
+	if err := mp.Close(); err != nil {
+		return models.TicketDetail{}, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	endpoint, err := url.Parse(c.baseURL + pathCreateSC)
+	if err != nil {
+		return models.TicketDetail{}, fmt.Errorf("parse itilium url: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), body)
+	if err != nil {
+		return models.TicketDetail{}, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", mp.FormDataContentType())
+	if c.login != "" {
+		httpReq.SetBasicAuth(c.login, c.password)
+	}
+
+	// В INFO пишем то, что уходит в 1С (тело multipart с бинарниками в лог не дублируем — только поля и метаданные файлов).
+	longDesc := buildCreateSCLongDescription(request)
+	fileMeta := make([]string, 0, len(request.FileAttachments))
+	for _, fa := range request.FileAttachments {
+		fileMeta = append(fileMeta, fmt.Sprintf("%s:%dB", fa.Filename, len(fa.Data)))
+	}
+	// Имена ключей ниже — только для slog (не уходят в 1С). В HTTP в 1С поля называются id, shortDescription, description, files.
+	c.logger.Info(
+		"itilium outbound create_sc (multipart fields)",
+		"url", endpoint.String(),
+		"send_id", strings.TrimSpace(request.UserID),
+		"send_shortDescription", strings.TrimSpace(request.Title),
+		"send_description", truncateLogString(longDesc, 6000),
+		"send_files_meta", strings.Join(fileMeta, ","),
+	)
+
+	start := time.Now()
+	response, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		c.logger.Error("itilium request failed", "method", http.MethodPost, "url", endpoint.String(), "duration_ms", time.Since(start).Milliseconds(), "error", err)
+		return models.TicketDetail{}, fmt.Errorf("perform request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return models.TicketDetail{}, fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(respBody), "\ufeff")
+
+	c.logger.Info(
+		"itilium create_sc multipart completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"response_body", truncateLogString(respText, 8000),
+	)
+	c.logger.Debug(
+		"itilium create_sc multipart details",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"response_body", respText,
+	)
+
+	if response.StatusCode >= 400 {
+		return models.TicketDetail{}, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return parseCreateSCResponse(respBody, request)
 }
 
 // AddComment adds a new comment to a ticket.
@@ -280,6 +501,69 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 	return nil
 }
 
+// doFormPostBytes выполняет POST с телом application/x-www-form-urlencoded и возвращает сырое тело ответа (для create_sc и нестандартного JSON).
+func (c *Client) doFormPostBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
+	if c.baseURL == "" {
+		return nil, errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse itilium url: %w", err)
+	}
+
+	encodedForm := form.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(encodedForm))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error("itilium form request failed", "method", http.MethodPost, "url", endpoint.String(), "duration_ms", time.Since(start).Milliseconds(), "error", err)
+		return nil, fmt.Errorf("perform form request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	// urlencoded_body — копия тела запроса для логов; в 1С уходят обычные имена полей формы (id, shortDescription, description).
+	respText := strings.TrimPrefix(string(payload), "\ufeff")
+	c.logger.Info(
+		"itilium form request completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"urlencoded_body", truncateLogString(encodedForm, 12000),
+		"response_body", truncateLogString(respText, 8000),
+	)
+	c.logger.Debug(
+		"itilium form request details",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"form_body", encodedForm,
+		"response_body", respText,
+	)
+
+	if response.StatusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
 // doForm performs a x-www-form-urlencoded request for legacy ITILIUM endpoints.
 func (c *Client) doForm(ctx context.Context, method string, path string, form url.Values, responseBody any) error {
 	if c.baseURL == "" {
@@ -408,6 +692,12 @@ func (c *DemoClient) GetTicket(_ context.Context, _ string, number string) (mode
 
 // CreateTicket creates a synthetic ticket result for the scaffold.
 func (c *DemoClient) CreateTicket(_ context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
+	// В демо-режиме в таймлайн выводим факт наличия вложений по именам (как пришли с multipart).
+	msg := "Заявка создана и отправлена в ITILIUM."
+	if len(request.Attachments) > 0 {
+		msg = fmt.Sprintf("Заявка создана. Вложения: %s.", strings.Join(request.Attachments, ", "))
+	}
+
 	return models.TicketDetail{
 		Number:               "SC-NEW-001",
 		Title:                request.Title,
@@ -418,7 +708,7 @@ func (c *DemoClient) CreateTicket(_ context.Context, request models.CreateTicket
 		CanChangeResponsible: true,
 		AvailableStates:      []string{"В работе", "Отложено", "На согласовании"},
 		Timeline: []models.CommentEntry{
-			{Author: "Система", Message: "Заявка создана и отправлена в ITILIUM.", CreatedAt: time.Now().Format(time.RFC3339)},
+			{Author: "Система", Message: msg, CreatedAt: time.Now().Format(time.RFC3339)},
 		},
 	}, nil
 }
@@ -489,6 +779,14 @@ func demoTicket(number string) models.TicketDetail {
 			{Author: "Ответственный", Message: "Проверяю обновление, вернусь с ответом через 10 минут.", CreatedAt: "2026-04-09T09:34:00+03:00"},
 		},
 	}
+}
+
+// truncateLogString ограничивает длину строк в логах (UTF-8 может обрезаться по байтам — для логов допустимо).
+func truncateLogString(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	return s[:maxBytes] + fmt.Sprintf(" … (truncated, %d bytes total)", len(s))
 }
 
 // stringFromAny converts dynamic JSON values into strings without panicking on unknown types.

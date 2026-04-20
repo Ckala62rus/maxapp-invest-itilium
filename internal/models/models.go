@@ -159,6 +159,17 @@ type TicketDetail struct {
 	Timeline []CommentEntry `json:"timeline"`
 }
 
+// FileAttachment holds one uploaded file for create-ticket multipart flows (not sent as JSON to ITILIUM).
+// Один файл из multipart при создании заявки; в JSON API не сериализуется, только для проксирования в ITILIUM.
+type FileAttachment struct {
+	// Filename stores the original file name from the client.
+	Filename string
+	// ContentType stores the MIME type; may be empty and filled server-side.
+	ContentType string
+	// Data stores the raw file bytes.
+	Data []byte
+}
+
 // CreateTicketRequest stores the payload used to create a new ticket.
 type CreateTicketRequest struct {
 	// UserID stores the acting MAX user identifier.
@@ -175,6 +186,9 @@ type CreateTicketRequest struct {
 	ExecutionDate string `json:"executionDate"`
 	// Attachments stores uploaded file names or references.
 	Attachments []string `json:"attachments"`
+	// FileAttachments stores raw uploads when the client sends multipart/form-data.
+	// Сырые вложения (multipart); в JSON наружу не отдаём — только для внутренней передачи в клиент ITILIUM.
+	FileAttachments []FileAttachment `json:"-"`
 }
 
 // SearchTicketRequest stores the search input from the UI.
