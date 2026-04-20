@@ -23,8 +23,7 @@ defineProps({
 
 const emit = defineEmits(['submit-create-ticket', 'open-screen', 'set-execution-date', 'add-attachments', 'remove-attachment'])
 
-// The create screen edits the shared create form object from App.vue so the
-// ticket create request and navigation outcome stay centralized in one place.
+// Экран только редактирует общий объект формы из App.vue: отправка и переход на карточку — в composable/store.
 function submitCreateTicket() {
   emit('submit-create-ticket')
 }
@@ -42,8 +41,8 @@ function addAttachments(event) {
   event.target.value = ''
 }
 
-function removeAttachment(fileName) {
-  emit('remove-attachment', fileName)
+function removeAttachment(index) {
+  emit('remove-attachment', index)
 }
 </script>
 
@@ -102,14 +101,25 @@ function removeAttachment(fileName) {
         </div>
         <label class="secondary-button upload-trigger">
           Добавить файл
-          <input class="upload-input" type="file" multiple @change="addAttachments" />
+          <!-- accept: типичные вложения к заявке; при необходимости расширить под политику ИБ -->
+          <input
+            class="upload-input"
+            type="file"
+            multiple
+            accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+            @change="addAttachments"
+          />
         </label>
       </div>
 
       <div class="chip-list">
-        <div v-for="fileName in createTicketForm.attachments" :key="fileName" class="file-chip">
-          <span>{{ fileName }}</span>
-          <button class="file-chip-remove" type="button" @click="removeAttachment(fileName)">Удалить</button>
+        <div
+          v-for="(file, index) in createTicketForm.attachmentFiles || []"
+          :key="file.name + '-' + index"
+          class="file-chip"
+        >
+          <span>{{ file.name }}</span>
+          <button class="file-chip-remove" type="button" @click="removeAttachment(index)">Удалить</button>
         </div>
       </div>
 

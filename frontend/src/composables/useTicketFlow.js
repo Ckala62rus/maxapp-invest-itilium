@@ -34,14 +34,15 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   // The responsible selector keeps the chosen ITILIUM assignee id before submit.
   const selectedResponsibleId = ref('')
 
-  // The create form mirrors the backend ticket creation contract.
+  // Форма создания заявки: текстовые поля + реальные объекты File для multipart (см. `tickets.createTicket`).
   const createTicketForm = ref({
     requestType: defaultRequestType,
     title: '',
     description: '',
     department: currentUser.value?.department || '',
     executionDate: '',
-    attachments: []
+    /** @type {File[]} */
+    attachmentFiles: []
   })
 
   const availableRequestTypes = computed(() => {
@@ -278,10 +279,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       description: createTicketForm.value.description,
       department: createTicketForm.value.department,
       executionDate: createTicketForm.value.executionDate,
-      attachments: createTicketForm.value.attachments
+      attachmentFiles: createTicketForm.value.attachmentFiles || []
     })
 
     if (response?.data?.success) {
+      // После успешного создания очищаем вложения, чтобы не тащить File в следующую заявку.
+      createTicketForm.value.attachmentFiles = []
       searchQuery.value = response?.data?.data?.number || ''
       submitBanner.value = 'Заявка создана и открыта в карточке.'
       activeScreen.value = 'details'
@@ -292,19 +295,16 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     createTicketForm.value.executionDate = value || ''
   }
 
+  // Добавляем выбранные в браузере файлы в список перед отправкой (не только имена).
   function addCreateAttachments(files) {
-    const nextFiles = Array.from(files || [])
-      .map((file) => file?.name || '')
-      .filter(Boolean)
-
-    createTicketForm.value.attachments = [
-      ...createTicketForm.value.attachments,
-      ...nextFiles
-    ]
+    const nextFiles = Array.from(files || []).filter((f) => f instanceof File)
+    createTicketForm.value.attachmentFiles = [...(createTicketForm.value.attachmentFiles || []), ...nextFiles]
   }
 
-  function removeCreateAttachment(fileName) {
-    createTicketForm.value.attachments = createTicketForm.value.attachments.filter((item) => item !== fileName)
+  function removeCreateAttachment(index) {
+    const list = [...(createTicketForm.value.attachmentFiles || [])]
+    list.splice(index, 1)
+    createTicketForm.value.attachmentFiles = list
   }
 
   async function submitComment() {
