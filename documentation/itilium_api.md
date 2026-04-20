@@ -12,7 +12,7 @@
 
 Тестовый ITILIUM из aiogram reference:
 
-- `https://inv-vsrv-1c.bars.ryazan.ru/itilium-test/hs/TelegramNew/`
+- `https://<host>/itilium-test/hs/Max/`
 
 Откуда это взято:
 
@@ -54,8 +54,8 @@
 
 Формат запроса в legacy:
 
-- `POST find_employee`
-- обычно передается `telegram=<id>`
+- `POST /find_employee`
+- в текущем контракте используем поле `id=<MAX user id>`
 
 Что точно используется в ответе:
 
@@ -74,10 +74,7 @@
 - реальный ответ этого endpoint может содержать больше флагов, чем мы уже знаем
 - поэтому при первом реальном тесте нужно сохранить полный JSON ответа этого endpoint
 
-Для MAX Mini App этот endpoint в будущем должен использовать:
-
-- не Telegram ID
-- а реальный MAX user id после backend validation
+Для MAX Mini App используется реальный MAX user id после backend validation.
 
 ## Что уже есть в нашем backend facade
 
@@ -248,9 +245,12 @@
   "number": "string",
   "title": "string",
   "description": "string",
+  "creationDate": "string",
   "state": "string",
   "deadline": "string",
+  "responsibleEmployee": "string",
   "responsibleTeam": "string",
+  "canChangeStatus": true,
   "canChangeResponsible": true,
   "availableStates": ["string"],
   "timeline": [
@@ -270,8 +270,7 @@
 ```json
 {
   "userId": "string",
-  "message": "string",
-  "attachments": ["string"]
+  "message": "string"
 }
 ```
 
@@ -316,16 +315,14 @@
 
 ## На что это маппится в legacy ITILIUM
 
-| Что нужно нам | Legacy endpoint |
-|---|---|
-| получить пользователя и его заявки | `find_employee` |
-| создать обычную заявку | `create_sc` |
-| найти заявку по номеру | `find_sc` |
-| добавить комментарий | `add_comment` |
-| сменить статус | `change_state_sc` |
-| получить доступных ответственных | `responsibles_sc` |
-| сменить ответственного | `change_responsible_sc` |
-| получить список заявок в ответственности | `list_sc_responsible` |
+- получить пользователя и его заявки: `POST /find_employee` (`id`)
+- получить мои заявки по номерам из `servicecalls`: `POST /list_sc` (`id`, `sc_number` через `;`)
+- получить список заявок в ответственности: `POST /list_sc_responsible` (`id`, `multipart/form-data`)
+- найти карточку заявки: `GET /find_sc` (`id`, `sc_number`)
+- добавить комментарий: `POST /add_comment` (`id`, `source`, `source_type=servicecall`, `comment_text`, `multipart/form-data`)
+- сменить статус: `POST /change_state_sc` (`id`, `telegram`, `inc_number`, `new_state`, optional `date_inc`, `comment`, `multipart/form-data`)
+- получить доступных ответственных: `POST /responsibles_sc` (`id`, `telegram`, `sc_number`, `multipart/form-data`)
+- сменить ответственного: `POST /change_responsible_sc` (`id`, `telegram`, `inc_number`, `responsibleEmployeeId`, `multipart/form-data`)
 
 ## Что еще не перенесено из legacy
 
@@ -370,3 +367,18 @@
 - backend validate/decrypt
 - реальный MAX user id
 - этот MAX user id идет дальше в ITILIUM вместо Telegram ID
+
+## Логи и трассировка
+
+Чтобы удобно разбирать цепочки в Grafana и docker logs:
+
+- ориентируемся на `request_id` в inbound/outbound логах
+- в outbound логах ITILIUM сохраняем: `method`, `url`, `status_code`, `duration_ms`, `request_id`, `user_id`
+- для form/multipart запросов сохраняем также отправленные поля (`form_fields`/`urlencoded_body`) и тело ответа (обрезанное)
+
+Типичная успешная цепочка добавления комментария:
+
+1. `POST /api/v1/tickets/{number}/comments` (inbound)
+2. `POST /add_comment` (ITILIUM, multipart)
+3. `GET /find_sc` (обновление карточки после комментария)
+4. `http request completed` с тем же `request_id`

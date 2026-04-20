@@ -28,6 +28,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 					if logger != nil {
 						logger.Info(
 							"request identity resolved",
+							"request_id", RequestIDFromContext(ctx),
 							"source", "access_token",
 							"user_id", strings.TrimSpace(claims.UserID),
 							"path", request.URL.Path,
@@ -40,6 +41,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 				if logger != nil {
 					logger.Warn(
 						"request identity token rejected",
+						"request_id", RequestIDFromContext(ctx),
 						"path", request.URL.Path,
 						"error", err,
 					)
@@ -56,6 +58,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 					if logger != nil {
 						logger.Warn(
 							"request identity resolved",
+							"request_id", RequestIDFromContext(ctx),
 							"source", "debug_header",
 							"user_id", userID,
 							"path", request.URL.Path,
@@ -69,6 +72,7 @@ func Identity(logger *slog.Logger, verifier AccessTokenVerifier, allowDebugHeade
 			if logger != nil && strings.TrimSpace(UserIDFromContext(ctx)) == "" {
 				logger.Debug(
 					"request identity is empty",
+					"request_id", RequestIDFromContext(ctx),
 					"path", request.URL.Path,
 					"allow_debug_headers", allowDebugHeaders,
 					"has_bearer_token", token != "",

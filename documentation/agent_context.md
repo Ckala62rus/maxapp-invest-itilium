@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Dev backend runs through `docker-compose.dev.yml` with Air; default `.air.toml` runs the binary without Delve so `:3000` works without GoLand; optional `.air.debug.toml` runs `dlv` on container `:40000`, published to host `localhost:40100` (Windows `excludedportrange` blocked `40000`); `.air.toml` uses `poll = true` for Docker Desktop bind mounts.
+- Dev backend runs through a single `backend-dev` service in `docker-compose.dev.yml`; it starts Air with `.air.debug.toml` (Delve on container `:40000`, published to host `localhost:40100`), while `.air.toml` remains an optional non-Delve fallback for manual runs; Air polling is enabled for Docker Desktop bind mounts.
 - Docker containers are currently started by the user and ready for the next external integration checks.
 - The ITILIUM dev target is built from `ITILIUM_HOST` in `.env` through `docker-compose.dev.yml`.
 - TLS verification is temporarily disabled with `itilium.insecure_skip_verify: true` because the current test host is addressed by IP.
@@ -11,6 +11,8 @@
 - A new Telegram bot was created by the user and is currently waiting for moderation before end-to-end mini app checks can start.
 - The app now has a first MAX auth slice: frontend loads `max-web-app.js`, reads `window.WebApp.initData`, exchanges it through `POST /api/v1/auth/max/validate`, and then uses a backend bearer token for protected API calls.
 - Live verification on 2026-04-15 confirmed MAX auth validation works with real `initData`; backend logs show `user_id=40367639` and then `find_employee` in ITILIUM returns `401` with `Пользователь с таким id не найден.Необходима регистрация`.
+- Ticket legacy contracts were aligned with 1C endpoints under `/hs/Max/`: `list_sc`, `list_sc_responsible`, `find_sc`, `add_comment`, `change_state_sc`, `responsibles_sc`, `change_responsible_sc`.
+- Outbound ITILIUM logs now include `request_id` and `user_id`, which allows end-to-end correlation between inbound API calls and downstream 1C calls in Grafana/Loki.
 
 ## Implemented Flows
 
@@ -25,6 +27,11 @@
 - Protected backend routes now require trusted identity from a backend bearer token; `X-User-ID` remains available only as an explicit development fallback through auth config.
 - The `backend-dev` container was recreated on 2026-04-15 and now confirms both `MAX_BOT_TOKEN` and `AUTH_ACCESS_TOKEN_SECRET` inside the running process environment.
 - The registration form no longer ships with fake defaults; it now prefills only trusted MAX `userId` and requires `FIO`, `Organization`, `Subdivision`, and `NamePosition` to match the real ITILIUM registration contract.
+- `GET /api/v1/tickets` now uses `servicecalls` from `find_employee` and loads card summaries via `POST /list_sc`.
+- `GET /api/v1/tickets/responsible` now loads numbers via `POST /list_sc_responsible` and resolves cards through `GET /find_sc`.
+- `GET /api/v1/tickets/{number}` and `POST /api/v1/tickets/search` are backed by `GET /find_sc` and map `creationDate`, `deadlineDate`, `responsibleEmployeeTitle`, `change_status`, `change_responsible`, `new_state`.
+- `POST /api/v1/tickets/{number}/comments` now calls `POST /add_comment` (`multipart/form-data`, without `telegram`) and re-reads the card through `find_sc`.
+- `GET /api/v1/tickets/{number}/responsibles` now calls `POST /responsibles_sc` (`multipart/form-data`) because GET returns `405` in the current 1C environment.
 
 ## Important Decisions
 
@@ -53,3 +60,4 @@
 - If the MAX production flow works, remove the last dev fallback dependency on `X-User-ID` by switching `auth.allow_debug_identity_headers` off outside local debugging.
 - Submit a live registration request and inspect backend logs for the exact upstream status and response body from `POST /registration`.
 - Recent accumulated changes were split into small thematic commits and pushed to `origin/main`; local empty `config.yml` was deleted.
+- For new ITILIUM contract checks, prefer filtering logs by `request_id` to observe full call chains (`handler -> itilium_client -> handler`).

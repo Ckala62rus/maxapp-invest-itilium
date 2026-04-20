@@ -13,16 +13,17 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const defaultRequestType = 'Заявка в отдел ИТ'
 
   // Page size for «Мои заявки» when the list is built from ITILIUM `servicecalls`.
-  const myTicketsPageSize = 5
+  const myTicketsPageSize = 10
 
   // The search field persists the current ticket number between list and search flows.
-  const searchQuery = ref('SC-000245')
+  const searchQuery = ref('')
 
   // The current list page shows how pagination will look in the future app.
   const currentTicketsPage = ref(1)
 
   // The comment draft keeps the prototype form editable until comment actions move to API.
   const commentDraft = ref('Нужна срочная проверка после ночного обновления.')
+  const detailsOrigin = ref('search')
 
   // The status form mirrors the backend transition contract used by the ticket card.
   const statusForm = ref({
@@ -44,6 +45,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     /** @type {File[]} */
     attachmentFiles: []
   })
+  const createValidationErrors = ref({})
+  const createValidationStarted = ref(false)
+  const createSubmitError = ref('')
 
   const availableRequestTypes = computed(() => {
     const options = [defaultRequestType]
@@ -58,23 +62,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     return options
   })
 
-  // These cards imitate the current user's tickets.
-  const myTickets = [
-    { number: 'SC-000245', title: 'Не открывается 1С на кассе', state: 'В работе', deadline: '11.04.2026', tone: 'amber' },
-    { number: 'SC-000244', title: 'Нужен доступ к отчету по складу', state: 'Зарегистрирована', deadline: '10.04.2026', tone: 'blue' },
-    { number: 'SC-000238', title: 'Ошибка печати ценников', state: 'На согласовании', deadline: '09.04.2026', tone: 'purple' },
-    { number: 'SC-000229', title: 'Не загружается каталог в терминале', state: 'Закрыта', deadline: '07.04.2026', tone: 'green' },
-    { number: 'SC-000220', title: 'Сбой в учете продаж по магазину', state: 'Отложена', deadline: '15.04.2026', tone: 'slate' },
-    { number: 'SC-000210', title: 'Нужен макет для акции', state: 'Маркетинг', deadline: '18.04.2026', tone: 'pink' }
-  ]
-
-  // These cards imitate tickets where the current user is responsible.
-  const responsibleTickets = [
-    { number: 'SC-000310', title: 'Проблема с авторизацией сотрудника', state: 'Ожидает ответа', owner: 'Магазин 17', tone: 'amber' },
-    { number: 'SC-000308', title: 'Нужна смена ответственного', state: 'В работе', owner: 'Офис продаж', tone: 'blue' },
-    { number: 'SC-000299', title: 'Добавить комментарий по инциденту', state: 'На согласовании', owner: 'РЦ Казань', tone: 'purple' }
-  ]
-
   // The responsible selector demonstrates a future modal with paginated assignees.
   const responsiblePeople = [
     { team: 'Отдел ИТ', person: 'Иван Петров', role: 'Старший инженер', externalId: 'emp-1' },
@@ -85,18 +72,22 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const storeMyTickets = computed(() => store.getters[ticketGetterTypes.myTickets] || [])
   const storeResponsibleTickets = computed(() => store.getters[ticketGetterTypes.responsibleTickets] || [])
 
-  // When ITILIUM returns `servicecalls`, the list is driven by those numbers until a dedicated list API exists.
+  // Экран «Мои заявки» строим только из servicecalls профиля.
   const ticketsFromServiceCalls = computed(() => {
     const user = currentUser.value
     const ids = user?.servicecalls
 
     if (!user?.employeeFound || user?.registrationRequired || !Array.isArray(ids) || ids.length === 0) {
-      return null
+      return []
     }
 
-    return ids
-      .map((id) => String(id).trim())
-      .filter(Boolean)
+    const uniqueIds = Array.from(new Set(
+      ids
+        .map((id) => String(id).trim())
+        .filter(Boolean)
+    ))
+
+    return uniqueIds
       .map((number) => ({
         number,
         title: `Заявка ${number}`,
@@ -118,27 +109,31 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const listErrors = computed(() => store.getters[ticketGetterTypes.listError] || [])
   const ticketErrors = computed(() => store.getters[ticketGetterTypes.ticketError] || [])
   const createErrors = computed(() => store.getters[ticketGetterTypes.createError] || [])
-
-  const normalizedMyTickets = computed(() => {
-    const fromCalls = ticketsFromServiceCalls.value
-
-    if (fromCalls) {
-      return fromCalls.map((ticket) => ({
-        ...ticket,
-        tone: ticket.tone || resolveTicketTone(ticket.state)
-      }))
+  const createErrorMessage = computed(() => {
+    if (createSubmitError.value) {
+      return createSubmitError.value
     }
 
-    const source = storeMyTickets.value.length ? storeMyTickets.value : myTickets
+    return createErrors.value[0] || ''
+  })
 
-    return source.map((ticket) => ({
-      ...ticket,
-      tone: ticket.tone || resolveTicketTone(ticket.state)
-    }))
+  const normalizedMyTickets = computed(() => {
+    const source = storeMyTickets.value.length ? storeMyTickets.value : ticketsFromServiceCalls.value
+
+    return source.map((ticket) => {
+      const merged = {
+        ...ticket
+      }
+
+      return {
+        ...merged,
+        tone: merged.tone || resolveTicketTone(merged.state)
+      }
+    })
   })
 
   const normalizedResponsibleTickets = computed(() => {
-    const source = storeResponsibleTickets.value.length ? storeResponsibleTickets.value : responsibleTickets
+    const source = storeResponsibleTickets.value
 
     return source.map((ticket) => ({
       ...ticket,
@@ -187,6 +182,18 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     currentTicketsPage.value = 1
   })
 
+  watch(
+    () => activeScreen.value,
+    (screen) => {
+      if (screen === 'myTickets') {
+        store.dispatch(ticketActionTypes.loadMyTickets)
+      }
+      if (screen === 'responsible') {
+        store.dispatch(ticketActionTypes.loadResponsibleTickets)
+      }
+    }
+  )
+
   watch([currentUser, availableRequestTypes], ([user, requestTypes]) => {
     if (!requestTypes.includes(createTicketForm.value.requestType)) {
       createTicketForm.value.requestType = requestTypes[0] || defaultRequestType
@@ -198,6 +205,24 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
   }, { immediate: true })
 
+  watch(
+    () => [
+      createTicketForm.value.requestType,
+      createTicketForm.value.title,
+      createTicketForm.value.description,
+      createTicketForm.value.department,
+      createTicketForm.value.executionDate
+    ],
+    () => {
+      if (createValidationStarted.value) {
+        createValidationErrors.value = validateCreateTicketForm(createTicketForm.value)
+        if (Object.keys(createValidationErrors.value).length === 0) {
+          createSubmitError.value = ''
+        }
+      }
+    }
+  )
+
   // A computed slice is enough to show how page navigation will behave.
   const paginatedTickets = computed(() => {
     const start = (currentTicketsPage.value - 1) * myTicketsPageSize
@@ -207,7 +232,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   // The page count drives the pager buttons in the static demo.
   const pageCount = computed(() => Math.ceil(normalizedMyTickets.value.length / myTicketsPageSize))
 
-  const myTicketsListSource = computed(() => (ticketsFromServiceCalls.value ? 'servicecalls' : 'store'))
   const detailStatusTone = computed(() => resolveTicketTone(selectedTicket.value?.state))
   const availableStatusOptions = computed(() => selectedTicket.value?.availableStates || [])
   const availableResponsibleOptions = computed(() => {
@@ -243,12 +267,13 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   }, { immediate: true })
 
   function loadTicketLists() {
+    // Для «Мои заявки» используем backend list_sc (через /api/v1/tickets) и fallback на servicecalls.
     store.dispatch(ticketActionTypes.loadMyTickets)
-    store.dispatch(ticketActionTypes.loadResponsibleTickets)
   }
 
   // This helper simulates navigation from list card to detail page.
-  async function openTicketDetails(ticketNumber) {
+  async function openTicketDetails(ticketNumber, source = 'search') {
+    detailsOrigin.value = source
     searchQuery.value = ticketNumber
     activeScreen.value = 'details'
     await store.dispatch(ticketActionTypes.loadTicketDetails, ticketNumber)
@@ -268,11 +293,20 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     })
 
     if (response?.data?.success) {
+      detailsOrigin.value = 'search'
       activeScreen.value = 'details'
     }
   }
 
   async function submitCreateTicket() {
+    createValidationStarted.value = true
+    createValidationErrors.value = validateCreateTicketForm(createTicketForm.value)
+    if (Object.keys(createValidationErrors.value).length > 0) {
+      createSubmitError.value = 'Заполните обязательные поля формы.'
+      return
+    }
+
+    createSubmitError.value = ''
     const response = await store.dispatch(ticketActionTypes.createTicket, {
       requestType: createTicketForm.value.requestType,
       title: createTicketForm.value.title,
@@ -384,6 +418,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     searchQuery,
     currentTicketsPage,
     commentDraft,
+    detailsOrigin,
     statusForm,
     selectedResponsibleId,
     createTicketForm,
@@ -398,6 +433,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     listErrors,
     ticketErrors,
     createErrors,
+    createValidationErrors,
+    createValidationStarted,
+    createErrorMessage,
     availableRequestTypes,
     normalizedResponsibleTickets,
     summaryCards,
@@ -420,9 +458,30 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     assignResponsible,
     setTicketsPage,
     setSearchQuery,
-    setCommentDraft,
-    myTicketsListSource
+    setCommentDraft
   }
+}
+
+function validateCreateTicketForm(form) {
+  const errors = {}
+
+  if (!String(form.requestType || '').trim()) {
+    errors.requestType = 'Выберите тип заявки.'
+  }
+  if (!String(form.title || '').trim()) {
+    errors.title = 'Укажите краткую тему.'
+  }
+  if (!String(form.description || '').trim()) {
+    errors.description = 'Добавьте подробное описание.'
+  }
+  if (!String(form.department || '').trim()) {
+    errors.department = 'Выберите подразделение.'
+  }
+  if (!String(form.executionDate || '').trim()) {
+    errors.executionDate = 'Выберите дату исполнения.'
+  }
+
+  return errors
 }
 
 function resolveTicketTone(state) {

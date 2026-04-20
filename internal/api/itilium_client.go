@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/config"
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/middleware"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
 )
 
@@ -61,12 +62,141 @@ func NewClient(cfg config.ItiliumConfig, logger *slog.Logger) *Client {
 
 // ListMyTickets returns the current user's tickets.
 func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.TicketSummary, error) {
-	var response []models.TicketSummary
-	if err := c.doJSON(ctx, http.MethodGet, "/tickets", map[string]string{"userId": userID}, nil, &response); err != nil {
+	lookup, err := c.FindEmployeeByIdentifier(ctx, models.EmployeeLookupRequest{
+		Identifier:    userID,
+		AttributeCode: "id",
+	})
+	if err != nil {
 		return nil, err
 	}
 
+	numbers := normalizeServiceCallNumbers(lookup.ServiceCalls)
+	if len(numbers) == 0 {
+		return []models.TicketSummary{}, nil
+	}
+
+	// 1С подтвердил контракт list_sc: id + sc_number, где sc_number — номера через ';'.
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(userID))
+	form.Set("sc_number", strings.Join(numbers, ";"))
+
+	payload, err := c.doFormPostBytes(ctx, "/list_sc", form)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := parseListSCResponse(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response) == 0 {
+		// Fallback: даже если list_sc вернул пусто, оставим список номеров из профиля.
+		response = make([]models.TicketSummary, 0, len(numbers))
+		for _, number := range numbers {
+			response = append(response, models.TicketSummary{
+				Number: number,
+				Title:  "Заявка " + number,
+				State:  "Откройте карточку",
+			})
+		}
+	}
+
 	return response, nil
+}
+
+func normalizeServiceCallNumbers(serviceCalls []string) []string {
+	uniq := make(map[string]struct{}, len(serviceCalls))
+	result := make([]string, 0, len(serviceCalls))
+	for _, item := range serviceCalls {
+		number := strings.TrimSpace(item)
+		if number == "" {
+			continue
+		}
+		if _, exists := uniq[number]; exists {
+			continue
+		}
+		uniq[number] = struct{}{}
+		result = append(result, number)
+	}
+	return result
+}
+
+func parseListSCResponse(payload []byte) ([]models.TicketSummary, error) {
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	rawText := strings.TrimSpace(string(clean))
+	if rawText == "" {
+		return []models.TicketSummary{}, nil
+	}
+
+	// Некоторые legacy-методы (например list_sc_responsible) возвращают просто массив номеров.
+	var numberList []string
+	if err := json.Unmarshal(clean, &numberList); err == nil {
+		result := make([]models.TicketSummary, 0, len(numberList))
+		for _, number := range numberList {
+			trimmed := strings.TrimSpace(number)
+			if trimmed == "" {
+				continue
+			}
+			result = append(result, models.TicketSummary{
+				Number: trimmed,
+				Title:  "Заявка " + trimmed,
+				State:  "Откройте карточку",
+			})
+		}
+		return result, nil
+	}
+
+	var list []map[string]any
+	if err := json.Unmarshal(clean, &list); err == nil {
+		return mapListSCItems(list), nil
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(clean, &envelope); err != nil {
+		return nil, fmt.Errorf("decode list_sc response: %w", err)
+	}
+
+	for _, key := range []string{"data", "items", "list", "result"} {
+		value, ok := envelope[key]
+		if !ok {
+			continue
+		}
+
+		items, ok := value.([]any)
+		if !ok {
+			continue
+		}
+
+		normalized := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			if m, castOK := item.(map[string]any); castOK {
+				normalized = append(normalized, m)
+			}
+		}
+		return mapListSCItems(normalized), nil
+	}
+
+	return []models.TicketSummary{}, nil
+}
+
+func mapListSCItems(items []map[string]any) []models.TicketSummary {
+	result := make([]models.TicketSummary, 0, len(items))
+	for _, item := range items {
+		number := pickStringFromMap(item, "number", "Number", "sc_number", "sc", "ServiceCallNumber", "Номер")
+		if number == "" {
+			continue
+		}
+
+		result = append(result, models.TicketSummary{
+			Number:          number,
+			Title:           pickStringFromMap(item, "title", "Title", "shortDescription", "ShortDescription", "Тема"),
+			State:           pickStringFromMap(item, "state", "State", "status", "Status", "Состояние"),
+			Deadline:        pickStringFromMap(item, "deadline", "Deadline", "executionDate", "ДатаИсполнения"),
+			ResponsibleTeam: pickStringFromMap(item, "responsibleTeam", "ResponsibleTeam", "client", "OU", "Подразделение"),
+		})
+	}
+	return result
 }
 
 // FindEmployeeByIdentifier loads a user payload from the legacy ITILIUM find_employee endpoint.
@@ -119,22 +249,197 @@ func (c *Client) RegisterUser(ctx context.Context, request models.RegistrationRe
 
 // ListResponsibleTickets returns tickets assigned to the current user.
 func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]models.TicketSummary, error) {
-	var response []models.TicketSummary
-	if err := c.doJSON(ctx, http.MethodGet, "/tickets/responsible", map[string]string{"userId": userID}, nil, &response); err != nil {
+	// Legacy-контракт 1С: list_sc_responsible с полем id (MAX user id).
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(userID))
+
+	// По данным Postman этот метод чувствителен к multipart/form-data.
+	payload, err := c.doMultipartFormPostBytes(ctx, "/list_sc_responsible", form)
+	if err != nil {
 		return nil, err
 	}
 
-	return response, nil
+	numbers, err := parseTicketNumbers(payload)
+	if err != nil {
+		return nil, err
+	}
+	if len(numbers) == 0 {
+		return []models.TicketSummary{}, nil
+	}
+
+	// По уточненному контракту карточки из ответственности запрашиваем через find_sc для каждого номера.
+	summaries := make([]models.TicketSummary, 0, len(numbers))
+	for _, number := range numbers {
+		detail, err := c.GetTicket(ctx, userID, number)
+		if err != nil {
+			// Отдельная карточка может быть недоступна — в списке оставляем номер без падения всего запроса.
+			summaries = append(summaries, models.TicketSummary{
+				Number: number,
+				Title:  "Заявка " + number,
+				State:  "Откройте карточку",
+			})
+			continue
+		}
+
+		summaries = append(summaries, models.TicketSummary{
+			Number:          detail.Number,
+			Title:           detail.Title,
+			State:           detail.State,
+			Deadline:        detail.Deadline,
+			ResponsibleTeam: detail.ResponsibleTeam,
+		})
+	}
+	if len(summaries) > 0 {
+		return summaries, nil
+	}
+
+	// На случай, если все find_sc вернули ошибки, показываем хотя бы список номеров.
+	fallback := make([]models.TicketSummary, 0, len(numbers))
+	for _, number := range numbers {
+		fallback = append(fallback, models.TicketSummary{
+			Number: number,
+			Title:  "Заявка " + number,
+			State:  "Откройте карточку",
+		})
+	}
+	return fallback, nil
+}
+
+func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
+	if c.baseURL == "" {
+		return nil, errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse itilium url: %w", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for key, values := range form {
+		for _, value := range values {
+			if err := writer.WriteField(key, value); err != nil {
+				return nil, fmt.Errorf("write multipart field %q: %w", key, err)
+			}
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), body)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error(
+			"itilium multipart form request failed",
+			"method", http.MethodPost,
+			"url", endpoint.String(),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return nil, fmt.Errorf("perform multipart form request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(payload), "\ufeff")
+	c.logger.Info(
+		"itilium multipart form request completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"form_fields", truncateLogString(form.Encode(), 12000),
+		"response_body", truncateLogString(respText, 8000),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+	c.logger.Debug(
+		"itilium multipart form request details",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"form_fields", form.Encode(),
+		"response_body", respText,
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+
+	if response.StatusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
+func parseTicketNumbers(payload []byte) ([]string, error) {
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	rawText := strings.TrimSpace(string(clean))
+	if rawText == "" {
+		return []string{}, nil
+	}
+
+	// Формат list_sc_responsible: ["0000019683", ...]
+	var numberList []string
+	if err := json.Unmarshal(clean, &numberList); err == nil {
+		return normalizeServiceCallNumbers(numberList), nil
+	}
+
+	// Вдруг backend 1С вернёт массив объектов.
+	var objectList []map[string]any
+	if err := json.Unmarshal(clean, &objectList); err == nil {
+		numbers := make([]string, 0, len(objectList))
+		for _, item := range objectList {
+			number := pickStringFromMap(item, "number", "Number", "sc_number", "sc", "ServiceCallNumber", "Номер")
+			if number == "" {
+				continue
+			}
+			numbers = append(numbers, number)
+		}
+		return normalizeServiceCallNumbers(numbers), nil
+	}
+
+	return nil, fmt.Errorf("decode list_sc_responsible response: %s", rawText)
 }
 
 // GetTicket returns one detailed ticket card.
 func (c *Client) GetTicket(ctx context.Context, userID string, number string) (models.TicketDetail, error) {
-	var response models.TicketDetail
-	if err := c.doJSON(ctx, http.MethodGet, "/tickets/"+url.PathEscape(number), map[string]string{"userId": userID}, nil, &response); err != nil {
+	query := map[string]string{
+		"id":        strings.TrimSpace(userID),
+		"sc_number": strings.TrimSpace(number),
+	}
+
+	var payload map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, "/find_sc", query, nil, &payload); err != nil {
 		return models.TicketDetail{}, err
 	}
 
-	return response, nil
+	detail := parseFindSCResponse(payload, number)
+	if strings.TrimSpace(detail.Number) == "" {
+		detail.Number = strings.TrimSpace(number)
+	}
+	if strings.TrimSpace(detail.State) == "" {
+		detail.State = "Зарегистрирована"
+	}
+
+	return detail, nil
 }
 
 // pathCreateSC — HTTP-сервис 1С «создать заявку» (согласовано: id, shortDescription, description, files).
@@ -369,52 +674,185 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateT
 
 // AddComment adds a new comment to a ticket.
 func (c *Client) AddComment(ctx context.Context, number string, request models.AddCommentRequest) (models.TicketDetail, error) {
-	var response models.TicketDetail
-	if err := c.doJSON(ctx, http.MethodPost, "/tickets/"+url.PathEscape(number)+"/comments", nil, request, &response); err != nil {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(request.UserID))
+	form.Set("source", strings.TrimSpace(number))
+	form.Set("source_type", "servicecall")
+	form.Set("comment_text", strings.TrimSpace(request.Message))
+
+	// По факту окружения add_comment принимает POST, а не GET.
+	if _, err := c.doMultipartFormPostBytes(ctx, "/add_comment", form); err != nil {
 		return models.TicketDetail{}, err
 	}
 
-	return response, nil
+	// Возвращаем актуальную карточку после добавления комментария.
+	detail, err := c.GetTicket(ctx, request.UserID, number)
+	if err != nil {
+		// На случай временной недоступности find_sc возвращаем минимально обновлённую карточку.
+		return models.TicketDetail{
+			Number: number,
+			Timeline: []models.CommentEntry{
+				{
+					Author:    "Пользователь",
+					Message:   strings.TrimSpace(request.Message),
+					CreatedAt: time.Now().Format(time.RFC3339),
+				},
+			},
+		}, nil
+	}
+
+	return detail, nil
 }
 
 // ChangeStatus changes the workflow status of a ticket.
 func (c *Client) ChangeStatus(ctx context.Context, number string, request models.ChangeStatusRequest) (models.TicketDetail, error) {
-	var response models.TicketDetail
-	if err := c.doJSON(ctx, http.MethodPost, "/tickets/"+url.PathEscape(number)+"/status", nil, request, &response); err != nil {
+	form := url.Values{}
+	// Совместимость с legacy-обработчиком: передаём оба идентификатора пользователя.
+	form.Set("id", strings.TrimSpace(request.UserID))
+	form.Set("telegram", strings.TrimSpace(request.UserID))
+	form.Set("inc_number", strings.TrimSpace(number))
+	form.Set("new_state", strings.TrimSpace(request.State))
+	if text := strings.TrimSpace(request.Date); text != "" {
+		form.Set("date_inc", text)
+	}
+	if text := strings.TrimSpace(request.Comment); text != "" {
+		form.Set("comment", text)
+	}
+
+	if _, err := c.doMultipartFormPostBytes(ctx, "/change_state_sc", form); err != nil {
 		return models.TicketDetail{}, err
 	}
 
-	return response, nil
+	// После смены статуса возвращаем обновлённую карточку из find_sc.
+	detail, err := c.GetTicket(ctx, request.UserID, number)
+	if err != nil {
+		// Если обновлённая карточка недоступна, хотя бы возвращаем локально обновлённый статус.
+		return models.TicketDetail{
+			Number: number,
+			State:  request.State,
+		}, nil
+	}
+	return detail, nil
 }
 
 // ChangeResponsible changes the responsible person of a ticket.
 func (c *Client) ChangeResponsible(ctx context.Context, number string, request models.ChangeResponsibleRequest) (models.TicketDetail, error) {
-	var response models.TicketDetail
-	if err := c.doJSON(ctx, http.MethodPost, "/tickets/"+url.PathEscape(number)+"/responsible", nil, request, &response); err != nil {
+	form := url.Values{}
+	// Совместимость с legacy: и id, и telegram передаём одинаковым MAX user id.
+	form.Set("id", strings.TrimSpace(request.UserID))
+	form.Set("telegram", strings.TrimSpace(request.UserID))
+	form.Set("inc_number", strings.TrimSpace(number))
+	form.Set("responsibleEmployeeId", strings.TrimSpace(request.ResponsibleID))
+
+	if _, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form); err != nil {
 		return models.TicketDetail{}, err
 	}
 
-	return response, nil
+	// Возвращаем обновлённую карточку после изменения ответственного.
+	detail, err := c.GetTicket(ctx, request.UserID, number)
+	if err != nil {
+		return models.TicketDetail{
+			Number: number,
+		}, nil
+	}
+	return detail, nil
 }
 
 // SearchTicket searches a ticket by number.
 func (c *Client) SearchTicket(ctx context.Context, request models.SearchTicketRequest) (models.TicketDetail, error) {
-	var response models.TicketDetail
-	if err := c.doJSON(ctx, http.MethodPost, "/tickets/search", nil, request, &response); err != nil {
-		return models.TicketDetail{}, err
+	// По контракту legacy поиск карточки выполняется через find_sc.
+	return c.GetTicket(ctx, request.UserID, request.Number)
+}
+
+func parseFindSCResponse(payload map[string]any, fallbackNumber string) models.TicketDetail {
+	if payload == nil {
+		return models.TicketDetail{Number: fallbackNumber}
 	}
 
-	return response, nil
+	source := payload
+	if nested, ok := payload["data"].(map[string]any); ok {
+		source = nested
+	}
+
+	detail := models.TicketDetail{
+		Number:               pickStringFromMap(source, "number", "Number", "sc_number", "sc", "ServiceCallNumber", "Номер"),
+		Title:                pickStringFromMap(source, "title", "Title", "shortDescription", "ShortDescription", "Тема"),
+		Description:          pickStringFromMap(source, "description", "Description", "text", "Текст"),
+		CreationDate:         pickStringFromMap(source, "creationDate", "CreationDate", "dateCreate", "ДатаСоздания"),
+		State:                pickStringFromMap(source, "state", "State", "status", "Status", "Состояние"),
+		Deadline:             pickStringFromMap(source, "deadline", "Deadline", "deadlineDate", "executionDate", "ДатаИсполнения"),
+		ResponsibleEmployee:  pickStringFromMap(source, "responsibleEmployee", "responsibleEmployeeTitle", "ResponsibleEmployeeTitle"),
+		ResponsibleTeam:      pickStringFromMap(source, "responsibleTeam", "responsibleTeamTitle", "ResponsibleTeam", "client", "OU", "Подразделение"),
+		CanChangeStatus:      boolFromAny(firstAny(source, "canChangeStatus", "change_status")),
+		CanChangeResponsible: boolFromAny(firstAny(source, "canChangeResponsible", "change_responsible")),
+		AvailableStates:      firstStringSlice(source, "availableStates", "new_state", "newState"),
+	}
+
+	if detail.Number == "" {
+		detail.Number = fallbackNumber
+	}
+	if detail.Title == "" {
+		detail.Title = "Заявка " + detail.Number
+	}
+
+	return detail
+}
+
+func firstAny(m map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := m[key]; ok {
+			return value
+		}
+	}
+	return nil
+}
+
+func firstStringSlice(m map[string]any, keys ...string) []string {
+	for _, key := range keys {
+		if value, ok := m[key]; ok {
+			if items := stringSliceFromAny(value); len(items) > 0 {
+				return items
+			}
+		}
+	}
+	return nil
 }
 
 // ListResponsibleOptions returns available assignees for the ticket.
 func (c *Client) ListResponsibleOptions(ctx context.Context, userID string, number string) ([]models.ResponsibleOption, error) {
-	var response []models.ResponsibleOption
-	if err := c.doJSON(ctx, http.MethodGet, "/tickets/"+url.PathEscape(number)+"/responsibles", map[string]string{"userId": userID}, nil, &response); err != nil {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(userID))
+	form.Set("telegram", strings.TrimSpace(userID))
+	form.Set("sc_number", strings.TrimSpace(number))
+
+	payloadRaw, err := c.doMultipartFormPostBytes(ctx, "/responsibles_sc", form)
+	if err != nil {
 		return nil, err
 	}
+	var payload []map[string]any
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		return nil, fmt.Errorf("decode responsibles_sc response: %w", err)
+	}
 
-	return response, nil
+	result := make([]models.ResponsibleOption, 0, len(payload))
+	for _, item := range payload {
+		externalID := pickStringFromMap(item, "externalId", "ExternalID", "responsibleEmployeeId", "employeeId", "id")
+		person := pickStringFromMap(item, "person", "Person", "responsibleEmployeeTitle", "employeeTitle", "title", "name", "fio")
+		team := pickStringFromMap(item, "team", "Team", "responsibleTeamTitle", "teamTitle", "subdivision")
+		role := pickStringFromMap(item, "role", "Role", "post", "position")
+
+		if externalID == "" && person == "" {
+			continue
+		}
+		result = append(result, models.ResponsibleOption{
+			Team:       team,
+			Person:     person,
+			Role:       role,
+			ExternalID: externalID,
+		})
+	}
+
+	return result, nil
 }
 
 // doJSON performs a JSON request and logs request and response metadata for troubleshooting.
@@ -458,7 +896,15 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 	start := time.Now()
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		c.logger.Error("itilium request failed", "method", method, "url", endpoint.String(), "duration_ms", time.Since(start).Milliseconds(), "error", err)
+		c.logger.Error(
+			"itilium request failed",
+			"method", method,
+			"url", endpoint.String(),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
 		return fmt.Errorf("perform request: %w", err)
 	}
 	defer response.Body.Close()
@@ -474,6 +920,8 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 		"url", endpoint.String(),
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
 	)
 	c.logger.Debug(
 		"itilium request details",
@@ -483,6 +931,8 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 		"duration_ms", time.Since(start).Milliseconds(),
 		"request_body", string(raw),
 		"response_body", string(payload),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
 	)
 
 	// 4xx/5xx отдаём сервису как HTTPStatusError — там решается UI (регистрация, ожидание и т.д.).

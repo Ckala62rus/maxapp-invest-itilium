@@ -145,12 +145,18 @@ type TicketDetail struct {
 	Title string `json:"title"`
 	// Description stores the detailed ticket text.
 	Description string `json:"description"`
+	// CreationDate stores the ticket creation date from ITILIUM.
+	CreationDate string `json:"creationDate,omitempty"`
 	// State stores the current workflow state.
 	State string `json:"state"`
 	// Deadline stores the current SLA or requested date.
 	Deadline string `json:"deadline"`
+	// ResponsibleEmployee stores the current responsible employee display name.
+	ResponsibleEmployee string `json:"responsibleEmployee,omitempty"`
 	// ResponsibleTeam stores the team currently assigned to the ticket.
 	ResponsibleTeam string `json:"responsibleTeam"`
+	// CanChangeStatus shows whether status transition is allowed.
+	CanChangeStatus bool `json:"canChangeStatus"`
 	// CanChangeResponsible shows whether responsible reassignment is allowed.
 	CanChangeResponsible bool `json:"canChangeResponsible"`
 	// AvailableStates lists next state transition names.

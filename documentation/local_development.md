@@ -26,13 +26,12 @@
    curl http://127.0.0.1:3000/healthz
    ```
 
-### Backend в Docker: обычный запуск и отладка (Air / Delve / GoLand)
+### Backend в Docker: единый dev-сервис с Delve (Air / GoLand)
 
-- По умолчанию **`air`** читает **`.air.toml`**: собирает бинарник и **запускает его без Delve** — API на `:3000` доступен сразу, без подключения GoLand.
-- Для **удалённой отладки** используйте **`.air.debug.toml`**: Delve в контейнере слушает **`:40000`**, наружу в Windows пробрасывается на **`localhost:40100`** (в `docker-compose.dev.yml`), сборка с `-gcflags="all=-N -l"`. Для `dlv exec` флаг `--continue` должен быть перед путём к бинарнику (`exec --continue ./tmp/maxapp-bot`), иначе headless-сессия ведёт себя как «жду отладчик», и HTTP не поднимается, пока не подключите IDE.
-  - Через compose (рекомендуется): в PowerShell перед запуском задайте `$env:AIR_CONFIG='.air.debug.toml'`, затем `docker compose -f docker-compose.dev.yml up -d --force-recreate backend-dev`.
-  - В обычный режим вернуться так: `$env:AIR_CONFIG='.air.toml'` и повторить `up -d --force-recreate backend-dev`.
-- В GoLand: **Run → Attach to Process** / remote на `localhost:40100` (порт проброшен в `docker-compose.dev.yml`).
+- `backend-dev` в `docker-compose.dev.yml` всегда запускается через **`.air.debug.toml`**: сборка с `-gcflags="all=-N -l"` и `dlv` в headless-режиме.
+- Delve слушает **`:40000`** в контейнере и проброшен на хост как **`localhost:40100`**.
+- Для `dlv exec` флаг `--continue` должен быть перед путём к бинарнику (`exec --continue ./tmp/maxapp-bot`), иначе headless-сессия ждёт attach и HTTP не поднимается.
+- В GoLand используйте **Run → Attach to Process** / remote на `localhost:40100`.
 
 ### Опционально: переменные только для фронта (Vite)
 
@@ -89,8 +88,8 @@ docker compose -f docker-compose.dev.yml up --build -d
 | `.env` | корень репозитория | Docker Compose, общие секреты для контейнеров |
 | `frontend/.env.development.local` | `frontend/` | только Vite (`VITE_*`), локальные оверрайды |
 | `deploy/config/app.dev.yml` | репозиторий | базовый dev-конфиг Go (путь по умолчанию для `go run`) |
-| `.air.toml` | корень | Air в контейнере `backend-dev`: сборка и запуск **без** Delve |
-| `.air.debug.toml` | корень | то же + Delve на `:40000` для GoLand (см. блок про отладку выше) |
+| `.air.toml` | корень | альтернативный конфиг Air без Delve (ручной запуск вне compose при необходимости) |
+| `.air.debug.toml` | корень | текущий основной конфиг для `backend-dev` в compose: Air + Delve на `:40000` |
 | `config.yml` в корне | локально | не коммитить; если используете свой путь — задайте `CONFIG_PATH` |
 
 ---

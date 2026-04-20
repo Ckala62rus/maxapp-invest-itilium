@@ -20,11 +20,6 @@ defineProps({
   currentTicketsPage: {
     type: Number,
     required: true
-  },
-  // `servicecalls` — номера из ITILIUM; `store` — мок или ответ общего списка из Vuex.
-  listSource: {
-    type: String,
-    required: true
   }
 })
 
@@ -48,24 +43,23 @@ function setTicketsPage(page) {
         <p class="eyebrow">Мои заявки</p>
         <h2>История обращений</h2>
       </div>
-      <span class="status-pill info">{{ listSource === 'servicecalls' ? 'Номера из ITILIUM' : 'Демо / API' }}</span>
+      <span class="status-pill info">Номера и карточки из ITILIUM</span>
     </div>
 
     <article v-if="isLoadingMyTickets" class="state-card">
       <div class="spinner"></div>
       <div>
         <h3>Загружаем список</h3>
-        <p>
-          {{
-            listSource === 'servicecalls'
-              ? 'Список построен по полю servicecalls из профиля.'
-              : 'Получаем ваши заявки из общего Vuex store и backend API.'
-          }}
-        </p>
+        <p>Подгружаем ваши заявки из поля servicecalls профиля.</p>
       </div>
     </article>
 
-    <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
+    <p v-else-if="listErrors.length && !paginatedTickets.length" class="status-pill rose">{{ listErrors[0] }}</p>
+
+    <article v-else-if="!paginatedTickets.length" class="content-card">
+      <h3>Заявок пока нет</h3>
+      <p>В профиле ITILIUM пока нет номеров в поле servicecalls.</p>
+    </article>
 
     <div v-else class="list-stack">
       <article

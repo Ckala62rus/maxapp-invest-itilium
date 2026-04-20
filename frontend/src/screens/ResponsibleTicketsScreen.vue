@@ -42,7 +42,12 @@ function openTicketDetails(ticketNumber) {
       </div>
     </article>
 
-    <p v-else-if="listErrors.length" class="status-pill rose">{{ listErrors[0] }}</p>
+    <p v-else-if="listErrors.length && !normalizedResponsibleTickets.length" class="status-pill rose">{{ listErrors[0] }}</p>
+
+    <article v-else-if="!normalizedResponsibleTickets.length" class="content-card">
+      <h3>Заявок в ответственности пока нет</h3>
+      <p>ITILIUM не вернул обращений, закрепленных за вашим MAX ID.</p>
+    </article>
 
     <div v-else class="list-stack">
       <article

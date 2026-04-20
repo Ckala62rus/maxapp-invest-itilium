@@ -4,6 +4,30 @@
  */
 import ticketsApi from '@/api/tickets'
 
+function normalizeTicketError(error) {
+  const backendMessage = error?.response?.data?.message
+  const statusCode = error?.response?.status
+  const rawMessage = String(backendMessage || error?.message || '').trim()
+
+  if (statusCode === 404 || /status 404/i.test(rawMessage)) {
+    return 'Заявка не найдена в ITILIUM.'
+  }
+  if (statusCode === 400 || /ticket number is required/i.test(rawMessage)) {
+    return 'Проверьте номер заявки и повторите запрос.'
+  }
+  if (statusCode >= 500) {
+    return 'ITILIUM временно недоступен. Повторите попытку позже.'
+  }
+  if (!rawMessage) {
+    return 'Не удалось выполнить запрос к ITILIUM.'
+  }
+  if (/itilium request failed with status/i.test(rawMessage)) {
+    return 'Не удалось получить данные из ITILIUM. Повторите попытку позже.'
+  }
+
+  return rawMessage
+}
+
 const state = {
   myTickets: [],
   responsibleTickets: [],
@@ -206,7 +230,8 @@ const mutations = {
   [mutationTypes.loadResponsibleOptionsFail](localState, errors) {
     localState.isLoadingResponsibleOptions = false
     localState.responsibleOptions = []
-    localState.ticketError = errors
+    // Ошибка загрузки списка ответственных не должна ломать уже открытую карточку заявки.
+    // Эту ошибку показываем локально в блоке выбора ответственного (если нужно), но не как ticketError.
   },
 
   [mutationTypes.addCommentStart](localState) {
@@ -266,7 +291,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.loadMyTicketsFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.loadMyTicketsFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -282,7 +307,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.createTicketFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.createTicketFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -298,7 +323,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.loadResponsibleTicketsFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.loadResponsibleTicketsFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -315,7 +340,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.loadTicketDetailsFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.loadTicketDetailsFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -331,7 +356,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.loadTicketDetailsFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.loadTicketDetailsFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -347,7 +372,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.loadResponsibleOptionsFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.loadResponsibleOptionsFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -363,7 +388,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.addCommentFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.addCommentFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -379,7 +404,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.changeStatusFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.changeStatusFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })
@@ -395,7 +420,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.changeResponsibleFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.changeResponsibleFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })

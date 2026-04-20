@@ -67,6 +67,7 @@ const {
   searchQuery,
   currentTicketsPage,
   commentDraft,
+  detailsOrigin,
   statusForm,
   selectedResponsibleId,
   createTicketForm,
@@ -82,6 +83,9 @@ const {
   listErrors,
   ticketErrors,
   createErrors,
+  createValidationErrors,
+  createValidationStarted,
+  createErrorMessage,
   normalizedResponsibleTickets,
   summaryCards,
   paginatedTickets,
@@ -103,8 +107,7 @@ const {
   assignResponsible,
   setTicketsPage,
   setSearchQuery,
-  setCommentDraft,
-  myTicketsListSource
+  setCommentDraft
 } = useTicketFlow({
   store,
   currentUser,
@@ -125,6 +128,14 @@ onMounted(() => {
 function openScreen(screenId) {
   activeScreen.value = screenId
   submitBanner.value = ''
+}
+
+function openMyTicketDetails(ticketNumber) {
+  openTicketDetails(ticketNumber, 'myTickets')
+}
+
+function openResponsibleTicketDetails(ticketNumber) {
+  openTicketDetails(ticketNumber, 'responsible')
 }
 
 </script>
@@ -199,6 +210,9 @@ function openScreen(screenId) {
           v-else-if="activeScreen === 'create'"
           :create-ticket-form="createTicketForm"
           :create-errors="createErrors"
+          :create-validation-errors="createValidationErrors"
+          :create-validation-started="createValidationStarted"
+          :create-error-message="createErrorMessage"
           :is-creating-ticket="isCreatingTicket"
           :available-request-types="availableRequestTypes"
           @submit-create-ticket="submitCreateTicket"
@@ -215,8 +229,7 @@ function openScreen(screenId) {
           :paginated-tickets="paginatedTickets"
           :page-count="pageCount"
           :current-tickets-page="currentTicketsPage"
-          :list-source="myTicketsListSource"
-          @open-ticket-details="openTicketDetails"
+          @open-ticket-details="openMyTicketDetails"
           @set-tickets-page="setTicketsPage"
         />
 
@@ -225,7 +238,7 @@ function openScreen(screenId) {
           :is-loading-responsible-tickets="isLoadingResponsibleTickets"
           :list-errors="listErrors"
           :normalized-responsible-tickets="normalizedResponsibleTickets"
-          @open-ticket-details="openTicketDetails"
+          @open-ticket-details="openResponsibleTicketDetails"
         />
 
         <SearchTicketScreen
@@ -235,7 +248,6 @@ function openScreen(screenId) {
           :is-loading-ticket-details="isLoadingTicketDetails"
           @update:search-query="setSearchQuery"
           @search-ticket="searchTicketByNumber"
-          @open-ticket-details="openTicketDetails(searchQuery)"
         />
 
         <TicketDetailsScreen
@@ -245,6 +257,7 @@ function openScreen(screenId) {
           :detail-status-tone="detailStatusTone"
           :is-loading-ticket-details="isLoadingTicketDetails"
           :ticket-errors="ticketErrors"
+          :details-origin="detailsOrigin"
           :selected-ticket-timeline="selectedTicketTimeline"
           :comment-draft="commentDraft"
           :is-submitting-comment="isSubmittingComment"

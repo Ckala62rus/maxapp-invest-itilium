@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.live
     container_name: maxapp-itilium-backend-dev
-    command: ["air", "-c", ".air.toml"]
+    command: ["air", "-c", ".air.debug.toml"]
     environment:
       CONFIG_PATH: /app/config.yml
       APP_ENV: development
@@ -29,43 +29,6 @@ services:
     # uncomment the line below and map the hostname from the certificate to the server IP.
     # extra_hosts:
     #   - "itilium-hostname-from-cert:10.60.25.121"
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - appnet
-    logging:
-      driver: loki
-      options:
-        loki-url: "${LOKI_URL:-http://127.0.0.1:3100/loki/api/v1/push}"
-
-  # Backend in debug mode (Delve on :40000 -> host :40100), no env toggles required.
-  backend-debug:
-    profiles: ["debug"]
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.live
-    container_name: maxapp-itilium-backend-debug
-    command: ["air", "-c", ".air.debug.toml"]
-    environment:
-      CONFIG_PATH: /app/config.yml
-      APP_ENV: development
-      APP_DEMO_MODE: "false"
-      REDIS_ENABLED: "true"
-      AUTH_ACCESS_TOKEN_SECRET: "${AUTH_ACCESS_TOKEN_SECRET:-dev-max-auth-secret}"
-      AUTH_ACCESS_TOKEN_TTL: "${AUTH_ACCESS_TOKEN_TTL:-12h}"
-      AUTH_MAX_INIT_DATA_TTL: "${AUTH_MAX_INIT_DATA_TTL:-10m}"
-      AUTH_ALLOW_DEBUG_IDENTITY_HEADERS: "${AUTH_ALLOW_DEBUG_IDENTITY_HEADERS:-true}"
-      MAX_BOT_TOKEN: "${MAX_BOT_TOKEN:-}"
-      ITILIUM_BASE_URL: "${ITILIUM_HOST:-https://10.60.25.121}/itilium-test/hs/Max/"
-    volumes:
-      - ./:/app
-      - ./deploy/config/app.dev.yml:/app/config.yml:ro
-      - go_mod_cache:/go/pkg/mod
-      - go_build_cache:/root/.cache/go-build
-    ports:
-      - "3000:3000"
-      - "40100:40000"
     depends_on:
       - postgres
       - redis
@@ -159,7 +122,7 @@ services:
     image: prom/prometheus:v2.55.1
     container_name: maxapp-itilium-prometheus-dev
     ports:
-      - "9090:9090"
+      - "19090:9090"
     volumes:
       - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:

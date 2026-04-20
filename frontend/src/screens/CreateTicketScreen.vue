@@ -1,7 +1,5 @@
 <script setup>
 // Создание заявки: тип (ИТ / маркетинг / DAX по флагам профиля), текст, срок.
-import { ElDatePicker } from 'element-plus'
-
 defineProps({
   createTicketForm: {
     type: Object,
@@ -13,6 +11,18 @@ defineProps({
   },
   createErrors: {
     type: Array,
+    required: true
+  },
+  createValidationErrors: {
+    type: Object,
+    required: true
+  },
+  createValidationStarted: {
+    type: Boolean,
+    required: true
+  },
+  createErrorMessage: {
+    type: String,
     required: true
   },
   isCreatingTicket: {
@@ -56,43 +66,61 @@ function removeAttachment(index) {
       <span class="status-pill info">Типы заявки зависят от прав пользователя</span>
     </div>
 
-    <article class="content-card form-card">
+    <form class="content-card form-card" @submit.prevent="submitCreateTicket">
       <label>
         Тип заявки
-        <select v-model="createTicketForm.requestType">
+        <select
+          v-model="createTicketForm.requestType"
+          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.requestType }"
+        >
           <option v-for="requestType in availableRequestTypes" :key="requestType" :value="requestType">
             {{ requestType }}
           </option>
         </select>
+        <small v-if="createValidationStarted && createValidationErrors.requestType" class="field-error">{{ createValidationErrors.requestType }}</small>
       </label>
       <label>
         Краткая тема
-        <input v-model="createTicketForm.title" type="text" />
+        <input
+          v-model="createTicketForm.title"
+          type="text"
+          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.title }"
+        />
+        <small v-if="createValidationStarted && createValidationErrors.title" class="field-error">{{ createValidationErrors.title }}</small>
       </label>
       <label>
         Подробное описание
-        <textarea v-model="createTicketForm.description" rows="5"></textarea>
+        <textarea
+          v-model="createTicketForm.description"
+          rows="5"
+          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.description }"
+        ></textarea>
+        <small v-if="createValidationStarted && createValidationErrors.description" class="field-error">{{ createValidationErrors.description }}</small>
       </label>
       <label>
         Подразделение
-        <select v-model="createTicketForm.department">
+        <select
+          v-model="createTicketForm.department"
+          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
+        >
           <option>Отдел ИТ</option>
           <option>Маркетинг</option>
         </select>
+        <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
       </label>
       <label>
         Исполнить до
-        <ElDatePicker
-          :model-value="createTicketForm.executionDate || null"
+        <input
           type="date"
-          format="DD.MM.YYYY"
-          value-format="YYYY-MM-DD"
-          placeholder="Выберите дату"
-          @update:model-value="setExecutionDate"
+          class="date-field"
+          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
+          :value="createTicketForm.executionDate || ''"
+          @input="setExecutionDate($event.target.value)"
         />
+        <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
       </label>
 
-      <p v-if="createErrors.length" class="status-pill rose">{{ createErrors[0] }}</p>
+      <p v-if="createErrorMessage" class="status-pill rose">{{ createErrorMessage }}</p>
 
       <div class="upload-box">
         <div>
@@ -126,13 +154,13 @@ function removeAttachment(index) {
       <div class="hero-actions">
         <button
           class="primary-button"
-          :disabled="isCreatingTicket || !createTicketForm.title || !createTicketForm.description || !createTicketForm.executionDate"
-          @click="submitCreateTicket"
+          type="submit"
+          :disabled="isCreatingTicket"
         >
           {{ isCreatingTicket ? 'Отправка...' : 'Отправить заявку' }}
         </button>
-        <button class="secondary-button" :disabled="isCreatingTicket" @click="openScreen('home')">Отмена</button>
+        <button class="secondary-button" type="button" :disabled="isCreatingTicket" @click="openScreen('home')">Отмена</button>
       </div>
-    </article>
+    </form>
   </section>
 </template>

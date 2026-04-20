@@ -145,6 +145,10 @@ func (s *TicketService) ChangeStatus(ctx context.Context, number string, request
 	if strings.TrimSpace(request.State) == "" {
 		return models.TicketDetail{}, errors.New("state is required")
 	}
+	// По контракту: для перехода в «В ожидании ответа» комментарий обязателен.
+	if strings.Contains(strings.ToLower(strings.TrimSpace(request.State)), "в ожидании ответа") && strings.TrimSpace(request.Comment) == "" {
+		return models.TicketDetail{}, errors.New("comment is required for state 'В ожидании ответа'")
+	}
 
 	return s.client.ChangeStatus(ctx, number, request)
 }
