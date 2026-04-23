@@ -15,6 +15,12 @@ function normalizeTicketError(error) {
   if (statusCode === 400 || /ticket number is required/i.test(rawMessage)) {
     return 'Проверьте номер заявки и повторите запрос.'
   }
+  if (/mark must be between 0 and 5/i.test(rawMessage)) {
+    return 'Оценка должна быть от 0 до 5.'
+  }
+  if (/comment is required for ratings 0 through 2/i.test(rawMessage)) {
+    return 'Для оценок 0, 1 и 2 укажите комментарий.'
+  }
   if (statusCode >= 500) {
     return 'ITILIUM временно недоступен. Повторите попытку позже.'
   }
@@ -41,6 +47,7 @@ const state = {
   isSubmittingComment: false,
   isChangingStatus: false,
   isChangingResponsible: false,
+  isSubmittingTicketRating: false,
   listError: [],
   ticketError: [],
   createError: []
@@ -70,7 +77,10 @@ export const mutationTypes = {
   changeStatusFail: '[tickets] changeStatusFail',
   changeResponsibleStart: '[tickets] changeResponsibleStart',
   changeResponsibleSuccess: '[tickets] changeResponsibleSuccess',
-  changeResponsibleFail: '[tickets] changeResponsibleFail'
+  changeResponsibleFail: '[tickets] changeResponsibleFail',
+  confirmTicketStart: '[tickets] confirmTicketStart',
+  confirmTicketSuccess: '[tickets] confirmTicketSuccess',
+  confirmTicketFail: '[tickets] confirmTicketFail'
 }
 
 export const actionTypes = {
@@ -82,7 +92,8 @@ export const actionTypes = {
   loadResponsibleOptions: '[tickets] loadResponsibleOptions',
   addComment: '[tickets] addComment',
   changeStatus: '[tickets] changeStatus',
-  changeResponsible: '[tickets] changeResponsible'
+  changeResponsible: '[tickets] changeResponsible',
+  confirmTicket: '[tickets] confirmTicket'
 }
 
 export const getterTypes = {
@@ -98,6 +109,7 @@ export const getterTypes = {
   isSubmittingComment: '[tickets] isSubmittingComment',
   isChangingStatus: '[tickets] isChangingStatus',
   isChangingResponsible: '[tickets] isChangingResponsible',
+  isSubmittingTicketRating: '[tickets] isSubmittingTicketRating',
   listError: '[tickets] listError',
   ticketError: '[tickets] ticketError',
   createError: '[tickets] createError'
@@ -154,6 +166,7 @@ const getters = {
   [getterTypes.isSubmittingComment]: (localState) => localState.isSubmittingComment,
   [getterTypes.isChangingStatus]: (localState) => localState.isChangingStatus,
   [getterTypes.isChangingResponsible]: (localState) => localState.isChangingResponsible,
+  [getterTypes.isSubmittingTicketRating]: (localState) => localState.isSubmittingTicketRating,
   [getterTypes.listError]: (localState) => localState.listError,
   [getterTypes.ticketError]: (localState) => localState.ticketError,
   [getterTypes.createError]: (localState) => localState.createError
@@ -276,6 +289,21 @@ const mutations = {
   },
   [mutationTypes.changeResponsibleFail](localState, errors) {
     localState.isChangingResponsible = false
+    localState.ticketError = errors
+  },
+
+  [mutationTypes.confirmTicketStart](localState) {
+    localState.isSubmittingTicketRating = true
+    localState.ticketError = []
+  },
+  [mutationTypes.confirmTicketSuccess](localState, ticket) {
+    localState.isSubmittingTicketRating = false
+    localState.selectedTicket = ticket
+    localState.myTickets = syncTicketSummaryList(localState.myTickets, ticket)
+    localState.responsibleTickets = syncTicketSummaryList(localState.responsibleTickets, ticket)
+  },
+  [mutationTypes.confirmTicketFail](localState, errors) {
+    localState.isSubmittingTicketRating = false
     localState.ticketError = errors
   }
 }
@@ -421,6 +449,22 @@ const actions = {
         })
         .catch((error) => {
           context.commit(mutationTypes.changeResponsibleFail, [normalizeTicketError(error)])
+          resolve(error)
+        })
+    })
+  },
+
+  [actionTypes.confirmTicket](context, payload) {
+    return new Promise((resolve) => {
+      context.commit(mutationTypes.confirmTicketStart)
+
+      ticketsApi.confirmTicket(payload.number, payload.data)
+        .then((response) => {
+          context.commit(mutationTypes.confirmTicketSuccess, response?.data?.data || null)
+          resolve(response)
+        })
+        .catch((error) => {
+          context.commit(mutationTypes.confirmTicketFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })

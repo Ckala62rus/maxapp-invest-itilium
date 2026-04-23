@@ -10,7 +10,8 @@ const urls = {
   ticketComments: (number) => `/api/v1/tickets/${number}/comments`,
   ticketStatus: (number) => `/api/v1/tickets/${number}/status`,
   ticketResponsibles: (number) => `/api/v1/tickets/${number}/responsibles`,
-  ticketResponsible: (number) => `/api/v1/tickets/${number}/responsible`
+  ticketResponsible: (number) => `/api/v1/tickets/${number}/responsible`,
+  ticketConfirm: (number) => `/api/v1/tickets/${number}/confirm`
 }
 
 export default urls

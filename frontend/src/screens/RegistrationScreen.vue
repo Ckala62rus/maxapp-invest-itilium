@@ -32,6 +32,14 @@ defineProps({
   isRegistrationSubmitting: {
     type: Boolean,
     required: true
+  },
+  registrationValidationStarted: {
+    type: Boolean,
+    required: true
+  },
+  registrationValidationErrors: {
+    type: Object,
+    required: true
   }
 })
 
@@ -78,36 +86,40 @@ function submitRegistration() {
         <input
           v-model="registrationForm.fullName"
           type="text"
-          required
           placeholder="Введите ФИО"
+          :class="{ 'field-invalid': registrationValidationStarted && registrationValidationErrors.fullName }"
         />
+        <small v-if="registrationValidationStarted && registrationValidationErrors.fullName" class="field-error">{{ registrationValidationErrors.fullName }}</small>
       </label>
       <label>
         Организация
         <input
           v-model="registrationForm.organization"
           type="text"
-          required
           placeholder="Введите организацию"
+          :class="{ 'field-invalid': registrationValidationStarted && registrationValidationErrors.organization }"
         />
+        <small v-if="registrationValidationStarted && registrationValidationErrors.organization" class="field-error">{{ registrationValidationErrors.organization }}</small>
       </label>
       <label>
         Подразделение
         <input
           v-model="registrationForm.department"
           type="text"
-          required
           placeholder="Введите подразделение"
+          :class="{ 'field-invalid': registrationValidationStarted && registrationValidationErrors.department }"
         />
+        <small v-if="registrationValidationStarted && registrationValidationErrors.department" class="field-error">{{ registrationValidationErrors.department }}</small>
       </label>
       <label>
         Должность
         <input
           v-model="registrationForm.position"
           type="text"
-          required
           placeholder="Введите должность"
+          :class="{ 'field-invalid': registrationValidationStarted && registrationValidationErrors.position }"
         />
+        <small v-if="registrationValidationStarted && registrationValidationErrors.position" class="field-error">{{ registrationValidationErrors.position }}</small>
       </label>
       <label>
         Телефон

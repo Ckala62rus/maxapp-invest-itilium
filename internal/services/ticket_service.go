@@ -33,6 +33,8 @@ type ItiliumClient interface {
 	SearchTicket(ctx context.Context, request models.SearchTicketRequest) (models.TicketDetail, error)
 	// ListResponsibleOptions returns available responsible persons for the ticket.
 	ListResponsibleOptions(ctx context.Context, userID string, number string) ([]models.ResponsibleOption, error)
+	// ConfirmTicket sends resolution rating (legacy confirm_sc).
+	ConfirmTicket(ctx context.Context, number string, request models.ConfirmTicketRequest) (models.TicketDetail, error)
 }
 
 // TicketService orchestrates ticket list and workflow use cases.
@@ -129,8 +131,9 @@ func (s *TicketService) AddComment(ctx context.Context, number string, request m
 	if strings.TrimSpace(number) == "" {
 		return models.TicketDetail{}, errors.New("ticket number is required")
 	}
-	if strings.TrimSpace(request.Message) == "" {
-		return models.TicketDetail{}, errors.New("message is required")
+	// Текст или хотя бы одно вложение — иначе в 1С нечего отправлять.
+	if strings.TrimSpace(request.Message) == "" && len(request.FileAttachments) == 0 {
+		return models.TicketDetail{}, errors.New("message or attachment is required")
 	}
 
 	// Ответ — полная карточка; кэш по этому номеру устареет по TTL сам.
@@ -174,4 +177,22 @@ func (s *TicketService) ListResponsibleOptions(ctx context.Context, userID strin
 
 	// Справочник возможных исполнителей для UI (выпадающий список).
 	return s.client.ListResponsibleOptions(ctx, userID, number)
+}
+
+// ConfirmTicket validates and sends confirm_sc (rating 0–5; comment required for 0–2).
+func (s *TicketService) ConfirmTicket(ctx context.Context, number string, request models.ConfirmTicketRequest) (models.TicketDetail, error) {
+	if strings.TrimSpace(number) == "" {
+		return models.TicketDetail{}, errors.New("ticket number is required")
+	}
+	if strings.TrimSpace(request.UserID) == "" {
+		return models.TicketDetail{}, errors.New("user id is required")
+	}
+	if request.Mark < 0 || request.Mark > 5 {
+		return models.TicketDetail{}, errors.New("mark must be between 0 and 5")
+	}
+	if request.Mark <= 2 && strings.TrimSpace(request.Comment) == "" {
+		return models.TicketDetail{}, errors.New("comment is required for ratings 0 through 2")
+	}
+
+	return s.client.ConfirmTicket(ctx, number, request)
 }

@@ -8,6 +8,35 @@ import { getItem, removeItem, setItem } from '@/helpers/persistenceStorage'
 const env = import.meta.env
 const debugUserId = env.VITE_DEBUG_USER_ID || ''
 
+function normalizeAuthMessage(error) {
+  const raw = String(error?.response?.data?.message ?? error?.message ?? error ?? '').trim()
+  const lower = raw.toLowerCase()
+
+  if (/^user id is required$/i.test(raw)) {
+    return 'Не удалось определить MAX ID. Обновите страницу или откройте приложение из MAX.'
+  }
+  if (/^full name is required$/i.test(raw)) {
+    return 'Укажите ФИО.'
+  }
+  if (/^organization is required$/i.test(raw)) {
+    return 'Укажите организацию.'
+  }
+  if (/^department is required$/i.test(raw)) {
+    return 'Укажите подразделение.'
+  }
+  if (/^position is required$/i.test(raw)) {
+    return 'Укажите должность.'
+  }
+  if (/employee lookup client is not configured/i.test(raw)) {
+    return 'Регистрация временно недоступна. Обратитесь к администратору.'
+  }
+  if (lower.includes('network') || lower.includes('network error')) {
+    return 'Нет соединения с сервером. Проверьте сеть и повторите попытку.'
+  }
+
+  return raw || 'Не удалось выполнить запрос.'
+}
+
 const state = {
   user: null,
   identity: null,
@@ -176,7 +205,7 @@ const actions = {
         .catch((error) => {
           removeItem('access_token')
           console.error('[auth] bootstrap: validation failed', error)
-          context.commit(mutationTypes.bootstrapFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.bootstrapFail, [normalizeAuthMessage(error)])
           resolve(error)
         })
     })
@@ -193,7 +222,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.registrationFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.registrationFail, [normalizeAuthMessage(error)])
           resolve(error)
         })
     })
@@ -210,7 +239,7 @@ const actions = {
           resolve(response)
         })
         .catch((error) => {
-          context.commit(mutationTypes.meFail, [error?.response?.data?.message || error.message])
+          context.commit(mutationTypes.meFail, [normalizeAuthMessage(error)])
           resolve(error)
         })
     })

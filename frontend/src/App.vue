@@ -56,7 +56,9 @@ const {
   rawInitData,
   rawInitDataUnsafeUserId,
   bootstrapAuth,
-  submitRegistration
+  submitRegistration,
+  registrationValidationStarted,
+  registrationValidationErrors
 } = useAuthFlow({
   store,
   activeScreen,
@@ -67,6 +69,9 @@ const {
   searchQuery,
   currentTicketsPage,
   commentDraft,
+  commentAttachmentFiles,
+  commentSuccessTick,
+  ratingSuccessTick,
   detailsOrigin,
   statusForm,
   selectedResponsibleId,
@@ -80,6 +85,7 @@ const {
   isSubmittingComment,
   isChangingStatus,
   isChangingResponsible,
+  isSubmittingTicketRating,
   listErrors,
   ticketErrors,
   createErrors,
@@ -103,8 +109,12 @@ const {
   addCreateAttachments,
   removeCreateAttachment,
   submitComment,
+  addCommentAttachments,
+  removeCommentAttachment,
   submitStatusChange,
   assignResponsible,
+  requestResponsibleOptions,
+  submitTicketRating,
   setTicketsPage,
   setSearchQuery,
   setCommentDraft
@@ -203,6 +213,8 @@ function openResponsibleTicketDetails(ticketNumber) {
           :raw-init-data-unsafe-user-id="rawInitDataUnsafeUserId"
           :auth-errors="authErrors"
           :is-registration-submitting="isRegistrationSubmitting"
+          :registration-validation-started="registrationValidationStarted"
+          :registration-validation-errors="registrationValidationErrors"
           @submit-registration="submitRegistration"
         />
 
@@ -260,6 +272,9 @@ function openResponsibleTicketDetails(ticketNumber) {
           :details-origin="detailsOrigin"
           :selected-ticket-timeline="selectedTicketTimeline"
           :comment-draft="commentDraft"
+          :comment-attachment-files="commentAttachmentFiles"
+          :comment-success-tick="commentSuccessTick"
+          :rating-success-tick="ratingSuccessTick"
           :is-submitting-comment="isSubmittingComment"
           :status-form="statusForm"
           :available-status-options="availableStatusOptions"
@@ -268,11 +283,16 @@ function openResponsibleTicketDetails(ticketNumber) {
           :available-responsible-options="availableResponsibleOptions"
           :is-changing-responsible="isChangingResponsible"
           :selected-responsible-id="selectedResponsibleId"
+          :is-submitting-ticket-rating="isSubmittingTicketRating"
           @open-screen="openScreen"
           @update:comment-draft="setCommentDraft"
+          @add-comment-files="addCommentAttachments"
+          @remove-comment-file="removeCommentAttachment"
           @submit-comment="submitComment"
           @submit-status-change="submitStatusChange"
           @assign-responsible="assignResponsible"
+          @request-responsible-options="requestResponsibleOptions"
+          @submit-ticket-rating="submitTicketRating"
         />
 
         <transition name="banner">

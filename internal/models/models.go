@@ -159,6 +159,8 @@ type TicketDetail struct {
 	CanChangeStatus bool `json:"canChangeStatus"`
 	// CanChangeResponsible shows whether responsible reassignment is allowed.
 	CanChangeResponsible bool `json:"canChangeResponsible"`
+	// CanConfirmRating tells the UI to offer the post-resolution rating flow (confirm_sc).
+	CanConfirmRating bool `json:"canConfirmRating,omitempty"`
 	// AvailableStates lists next state transition names.
 	AvailableStates []string `json:"availableStates"`
 	// Timeline stores comments and important system events.
@@ -213,6 +215,8 @@ type AddCommentRequest struct {
 	Message string `json:"message"`
 	// Attachments stores uploaded file names or references.
 	Attachments []string `json:"attachments"`
+	// FileAttachments stores raw uploads when the client sends multipart/form-data (same pattern as create ticket).
+	FileAttachments []FileAttachment `json:"-"`
 }
 
 // ChangeStatusRequest stores a workflow transition payload.
@@ -233,6 +237,16 @@ type ChangeResponsibleRequest struct {
 	UserID string `json:"userId"`
 	// ResponsibleID stores the selected target responsible person id.
 	ResponsibleID string `json:"responsibleId"`
+}
+
+// ConfirmTicketRequest stores rating (confirm_sc) payload: mark 0–5, comment required for 0–2.
+type ConfirmTicketRequest struct {
+	// UserID stores the acting MAX user identifier.
+	UserID string `json:"userId"`
+	// Mark stores the user rating 0–5 (legacy ITILIUM confirm_sc).
+	Mark int `json:"mark"`
+	// Comment stores optional explanation; required when Mark is 0, 1, or 2.
+	Comment string `json:"comment"`
 }
 
 // ResponsibleOption stores one available responsible person.

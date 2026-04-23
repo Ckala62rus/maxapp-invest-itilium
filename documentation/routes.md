@@ -126,3 +126,11 @@ Every request passes through the same middleware chain defined in `internal/hand
   - validates payload
   - calls ITILIUM to change assignee
   - returns updated ticket detail
+
+### `POST /api/v1/tickets/{number}/confirm`
+- Handler: `Handler.ConfirmTicket`
+- Service: `TicketService.ConfirmTicket`
+- Flow:
+  - decodes rating `mark` (0–5) and optional `comment` (required in service for marks 0–2)
+  - calls ITILIUM `confirm_sc` (legacy POST with query `telegram`, `incident`, `mark`, optional `comment_text`)
+  - returns refreshed ticket detail from `find_sc`

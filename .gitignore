@@ -2,6 +2,9 @@
 .env.local
 .env.*.local
 
+# Локальная привязка к CONFIG_PATH; не класть секреты в репозиторий
+config.yml
+
 example/
 
 frontend/node_modules/

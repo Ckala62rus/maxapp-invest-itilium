@@ -265,14 +265,18 @@
 
 #### `POST /api/v1/tickets/{number}/comments`
 
-Тело запроса:
+Без файлов — `application/json` (поле `userId` в теле не доверяем, подставляется из сессии):
 
 ```json
 {
-  "userId": "string",
-  "message": "string"
+  "message": "string",
+  "attachments": []
 }
 ```
+
+С файлами — `multipart/form-data`: поле `payload` (JSON-строка с `message` и `attachments: []`) и повторяющиеся части `attachments` (как при `POST /api/v1/tickets`). Нужен хотя бы непустой текст **или** одно вложение.
+
+В ITILIUM: `POST /add_comment` с теми же полями формы; при вложениях дополнительно части `files` (как у `create_sc`).
 
 #### `POST /api/v1/tickets/{number}/status`
 
@@ -313,22 +317,39 @@
 }
 ```
 
+#### `POST /api/v1/tickets/{number}/confirm`
+
+Оценка решения (legacy `confirm_sc`). Поле `userId` в теле не доверяем — подставляется из сессии.
+
+Тело запроса:
+
+```json
+{
+  "mark": 0,
+  "comment": "string"
+}
+```
+
+`mark` — целое от **0** до **5**. Для оценок **0, 1 и 2** комментарий обязателен (и на backend, и в UI).
+
+В ITILIUM: `POST /confirm_sc?telegram={maxUserId}&incident={number}&mark={mark}` и при непустом комментарии `&comment_text=...` (тело запроса пустое, как в example-боте).
+
 ## На что это маппится в legacy ITILIUM
 
 - получить пользователя и его заявки: `POST /find_employee` (`id`)
 - получить мои заявки по номерам из `servicecalls`: `POST /list_sc` (`id`, `sc_number` через `;`)
 - получить список заявок в ответственности: `POST /list_sc_responsible` (`id`, `multipart/form-data`)
 - найти карточку заявки: `GET /find_sc` (`id`, `sc_number`)
-- добавить комментарий: `POST /add_comment` (`id`, `source`, `source_type=servicecall`, `comment_text`, `multipart/form-data`)
+- добавить комментарий: `POST /add_comment` (`id`, `source`, `source_type=servicecall`, `comment_text`, `multipart/form-data`; при файлах — ещё части `files`)
 - сменить статус: `POST /change_state_sc` (`id`, `telegram`, `inc_number`, `new_state`, optional `date_inc`, `comment`, `multipart/form-data`)
-- получить доступных ответственных: `POST /responsibles_sc` (`id`, `telegram`, `sc_number`, `multipart/form-data`)
+- получить доступных ответственных: **`POST /responsibles_sc?id=…&sc_number=…`** (параметры в query, тело пустое; на части контуров `GET` даёт 405) **или** fallback `POST` с `telegram`+`sc_number` в query, **или** `multipart/form-data` только с `id` и `sc_number` (без `telegram`, иначе возможна ошибка 1С); ответ — массив **команд** с `responsibles` или плоский список
 - сменить ответственного: `POST /change_responsible_sc` (`id`, `telegram`, `inc_number`, `responsibleEmployeeId`, `multipart/form-data`)
+- оценить решение: `POST /confirm_sc` (query: `telegram`, `incident`, `mark`, опционально `comment_text`; тело пустое) — проксируется как `POST /api/v1/tickets/{number}/confirm`
 
 ## Что еще не перенесено из legacy
 
 Пока еще не реализовано в текущем backend facade:
 
-- `confirm_sc`
 - `vote_change`
 - `listServicesMarketing`
 - `listSubdivisionMarketing`
@@ -367,6 +388,69 @@
 - backend validate/decrypt
 - реальный MAX user id
 - этот MAX user id идет дальше в ITILIUM вместо Telegram ID
+
+## Ответы со стороны 1С (типичное поведение HTTP-сервиса)
+
+Ниже не «официальная спецификация», а наблюдаемые на тестовом контуре паттерны: тело ответа и коды могут отличаться, но их удобно сверять с логами backend (`itilium request details` на уровне DEBUG).
+
+### Общие замечания
+
+- Успешные операции часто возвращают **`200 OK`** с **пустым телом** (`response_body=""`), особенно для `add_comment`, `change_state_sc`, `change_responsible_sc` — факт успеха определяется по коду ответа.
+- Ошибки аутентификации к публикации 1С: **`401 Unauthorized`** (иногда с текстом в теле).
+- Неверный метод для опубликованного ресурса: **`405 Method Not Allowed`** (например, если вызвать `GET` вместо ожидаемого `POST` с `multipart/form-data`).
+- Ошибки бизнес-логики или неверные параметры: **`400 Bad Request`** (тело может быть текстом или JSON — смотреть лог).
+- Проблемы на стороне сервера 1С: **`5xx`**.
+
+### `POST /find_employee`
+
+- Успех **`200`**: обычно JSON с полями вроде `UUID`, `servicecalls`, флагов доступа; точный набор полей нужно фиксировать по живому ответу.
+- Пользователь не найден / нужна регистрация: часто **`401`** с текстом вида «Пользователь с таким id не найден…» (как строка в теле, не JSON).
+
+### `GET /find_sc`
+
+- Успех **`200`**: JSON-объект карточки заявки, например:
+
+```json
+{
+  "number": "0000019683",
+  "shortDescription": "Различные текущие задачи",
+  "description": "…",
+  "creationDate": "31.10.2024 11:02:32",
+  "deadlineDate": "28.05.2025 14:00:45",
+  "responsibleEmployeeTitle": "…",
+  "state": "04_В работе",
+  "change_status": true,
+  "change_responsible": true,
+  "new_state": ["08_Закрыто", "06_В ожидании ответа", "…"]
+}
+```
+
+- Заявка не найдена: обычно **`404`** (или пустое/не JSON тело — смотреть лог).
+
+### `POST /list_sc`, `POST /list_sc_responsible`
+
+- Успех **`200`**: JSON-массив объектов кратких данных **или** массив строк-номеров (для «ответственности»), либо обёртка с ключом `data`/`items` — парсер в backend учитывает несколько вариантов.
+- Пустой результат иногда приходит как **`204 No Content`** — тогда тела нет; это нужно учитывать при отладке.
+
+### `POST /add_comment`
+
+- Успех **`200`**: нередко **пустое тело**; дальше backend сам запрашивает актуальную карточку через `find_sc`.
+- Долгий ответ (десятки секунд) возможен на стороне 1С — это видно по `duration_ms` в логах, а не как отдельный код.
+
+### `POST /change_state_sc`, `POST /change_responsible_sc`
+
+- Успех **`200`**: часто пустое или короткое тело; затем обновление карточки через `find_sc`.
+
+### `POST /responsibles_sc` (параметры в строке запроса)
+
+- Типичный вызов: **`POST`** на URL вида `/responsibles_sc?id={userId}&sc_number={номер}` без тела.
+- Успех **`200`**: JSON-массив; частый формат — элементы с `responsibleTeamTitle` / `responsibleTeamId` и вложенным массивом `responsibles` (`responsibleEmployeeId`, `responsibleEmployeeTitle`). Допускается плоский список — backend разворачивает оба варианта.
+
+### `POST /create_sc`
+
+- Успех **`200`**: тело может содержать номер созданной заявки или обёртку — разбор в `parseCreateSCResponse`.
+
+---
 
 ## Логи и трассировка
 

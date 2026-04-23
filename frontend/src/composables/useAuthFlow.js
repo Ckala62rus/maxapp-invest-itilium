@@ -23,6 +23,8 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
     phone: '',
     comment: defaultRegistrationComment
   })
+  const registrationValidationStarted = ref(false)
+  const registrationValidationErrors = ref({})
   const maxBridgeState = ref({
     isAvailable: false,
     initData: '',
@@ -82,6 +84,20 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
 
   // When the profile changes, the registration form is prefilled from the same source
   // so the user does not re-enter obvious data during the MAX onboarding flow.
+  watch(
+    () => [
+      registrationForm.value.fullName,
+      registrationForm.value.organization,
+      registrationForm.value.department,
+      registrationForm.value.position
+    ],
+    () => {
+      if (registrationValidationStarted.value) {
+        registrationValidationErrors.value = validateRegistrationForm(registrationForm.value)
+      }
+    }
+  )
+
   watch([currentUser, currentIdentity], ([user, identity]) => {
     const trustedUserId = identity?.userId || user?.userId || ''
     const hasResolvedEmployeeProfile = Boolean(user?.employeeFound) && !user?.registrationRequired
@@ -162,6 +178,12 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
   // Registration goes through the shared auth module so the UI already uses
   // the same request lifecycle that future componentized screens will reuse.
   async function submitRegistration() {
+    registrationValidationStarted.value = true
+    registrationValidationErrors.value = validateRegistrationForm(registrationForm.value)
+    if (Object.keys(registrationValidationErrors.value).length > 0) {
+      return
+    }
+
     const response = await store.dispatch(authActionTypes.register, {
       userId: registrationIdentityUserId.value,
       employeeNumber: registrationForm.value.employeeNumber,
@@ -174,6 +196,8 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
     })
 
     if (response?.data?.success) {
+      registrationValidationStarted.value = false
+      registrationValidationErrors.value = {}
       submitBanner.value = 'Регистрационная форма отправлена на проверку.'
       activeScreen.value = 'profile'
     }
@@ -194,6 +218,25 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
     rawInitData,
     rawInitDataUnsafeUserId,
     bootstrapAuth,
-    submitRegistration
+    submitRegistration,
+    registrationValidationStarted,
+    registrationValidationErrors
   }
+}
+
+function validateRegistrationForm(form) {
+  const errors = {}
+  if (!String(form.fullName || '').trim()) {
+    errors.fullName = 'Укажите ФИО.'
+  }
+  if (!String(form.organization || '').trim()) {
+    errors.organization = 'Укажите организацию.'
+  }
+  if (!String(form.department || '').trim()) {
+    errors.department = 'Укажите подразделение.'
+  }
+  if (!String(form.position || '').trim()) {
+    errors.position = 'Укажите должность.'
+  }
+  return errors
 }

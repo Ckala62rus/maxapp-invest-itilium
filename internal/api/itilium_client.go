@@ -75,31 +75,48 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 		return []models.TicketSummary{}, nil
 	}
 
+	summaryFromProfileNumbers := func() []models.TicketSummary {
+		out := make([]models.TicketSummary, 0, len(numbers))
+		for _, number := range numbers {
+			out = append(out, models.TicketSummary{
+				Number: number,
+				Title:  "Заявка " + number,
+				State:  "Откройте карточку",
+			})
+		}
+		return out
+	}
+
 	// 1С подтвердил контракт list_sc: id + sc_number, где sc_number — номера через ';'.
+	// Это «обогащение» списка темами/статусами; при сбое публикации (500, смена контракта) остаёмся на номерах из find_employee.
 	form := url.Values{}
 	form.Set("id", strings.TrimSpace(userID))
 	form.Set("sc_number", strings.Join(numbers, ";"))
 
 	payload, err := c.doFormPostBytes(ctx, "/list_sc", form)
 	if err != nil {
-		return nil, err
+		c.logger.Warn(
+			"list_sc failed, returning my tickets from servicecalls only",
+			"error", err,
+			"user_id", userID,
+			"request_id", middleware.RequestIDFromContext(ctx),
+		)
+		return summaryFromProfileNumbers(), nil
 	}
 
 	response, err := parseListSCResponse(payload)
 	if err != nil {
-		return nil, err
+		c.logger.Warn(
+			"list_sc response could not be decoded, using servicecalls only",
+			"error", err,
+			"user_id", userID,
+			"request_id", middleware.RequestIDFromContext(ctx),
+		)
+		return summaryFromProfileNumbers(), nil
 	}
 
 	if len(response) == 0 {
-		// Fallback: даже если list_sc вернул пусто, оставим список номеров из профиля.
-		response = make([]models.TicketSummary, 0, len(numbers))
-		for _, number := range numbers {
-			response = append(response, models.TicketSummary{
-				Number: number,
-				Title:  "Заявка " + number,
-				State:  "Откройте карточку",
-			})
-		}
+		return summaryFromProfileNumbers(), nil
 	}
 
 	return response, nil
@@ -389,6 +406,123 @@ func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form
 	return payload, nil
 }
 
+// doPostEmptyQuery выполняет POST без тела: legacy confirm_sc и fallback responsibles_sc с параметрами в query.
+func (c *Client) doPostEmptyQuery(ctx context.Context, path string, query url.Values) ([]byte, error) {
+	if c.baseURL == "" {
+		return nil, errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse itilium url: %w", err)
+	}
+	endpoint.RawQuery = query.Encode()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error(
+			"itilium empty post request failed",
+			"method", http.MethodPost,
+			"url", endpoint.String(),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return nil, fmt.Errorf("perform post request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(payload), "\ufeff")
+	c.logger.Info(
+		"itilium empty post request completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"response_body", truncateLogString(respText, 8000),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+
+	if response.StatusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
+// parseResponsiblesScResponse разбирает ответ responsibles_sc: либо массив команд с вложенным responsibles, либо плоский список.
+func parseResponsiblesScResponse(payloadRaw []byte) ([]models.ResponsibleOption, error) {
+	clean := bytes.TrimPrefix(payloadRaw, []byte{0xEF, 0xBB, 0xBF})
+	var rows []map[string]any
+	if err := json.Unmarshal(clean, &rows); err != nil {
+		return nil, fmt.Errorf("decode responsibles_sc response: %w", err)
+	}
+
+	result := make([]models.ResponsibleOption, 0, len(rows)*4)
+	for _, item := range rows {
+		team := pickStringFromMap(item, "responsibleTeamTitle", "ResponsibleTeamTitle", "team", "Team")
+
+		if nested, ok := item["responsibles"]; ok {
+			arr, ok := nested.([]any)
+			if !ok {
+				continue
+			}
+			for _, emp := range arr {
+				m, ok := emp.(map[string]any)
+				if !ok {
+					continue
+				}
+				externalID := pickStringFromMap(m, "responsibleEmployeeId", "ResponsibleEmployeeId", "externalId", "ExternalID", "employeeId", "id")
+				person := pickStringFromMap(m, "responsibleEmployeeTitle", "ResponsibleEmployeeTitle", "person", "Person", "title", "name", "fio")
+				if externalID == "" && person == "" {
+					continue
+				}
+				result = append(result, models.ResponsibleOption{
+					Team:       team,
+					Person:     strings.TrimSpace(person),
+					ExternalID: externalID,
+				})
+			}
+			continue
+		}
+
+		externalID := pickStringFromMap(item, "externalId", "ExternalID", "responsibleEmployeeId", "employeeId", "id")
+		person := pickStringFromMap(item, "person", "Person", "responsibleEmployeeTitle", "employeeTitle", "title", "name", "fio")
+		teamFlat := pickStringFromMap(item, "team", "Team", "responsibleTeamTitle", "teamTitle", "subdivision")
+		if teamFlat != "" {
+			team = teamFlat
+		}
+		role := pickStringFromMap(item, "role", "Role", "post", "position")
+		if externalID == "" && person == "" {
+			continue
+		}
+		result = append(result, models.ResponsibleOption{
+			Team:       team,
+			Person:     strings.TrimSpace(person),
+			Role:       role,
+			ExternalID: externalID,
+		})
+	}
+
+	return result, nil
+}
+
 func parseTicketNumbers(payload []byte) ([]string, error) {
 	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
 	rawText := strings.TrimSpace(string(clean))
@@ -674,14 +808,25 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateT
 
 // AddComment adds a new comment to a ticket.
 func (c *Client) AddComment(ctx context.Context, number string, request models.AddCommentRequest) (models.TicketDetail, error) {
-	form := url.Values{}
-	form.Set("id", strings.TrimSpace(request.UserID))
-	form.Set("source", strings.TrimSpace(number))
-	form.Set("source_type", "servicecall")
-	form.Set("comment_text", strings.TrimSpace(request.Message))
+	commentText := strings.TrimSpace(request.Message)
+	// Если текст пустой, но есть файлы, подставляем короткую подпись — поле comment_text в 1С не должно оставаться пустым.
+	if commentText == "" && len(request.FileAttachments) > 0 {
+		commentText = "Прикреплён файл."
+	}
 
-	// По факту окружения add_comment принимает POST, а не GET.
-	if _, err := c.doMultipartFormPostBytes(ctx, "/add_comment", form); err != nil {
+	var err error
+	if len(request.FileAttachments) > 0 {
+		// Вложения уходят в те же части files, что и при create_sc (контракт HTTP-сервиса 1С).
+		err = c.doAddCommentMultipart(ctx, number, commentText, request)
+	} else {
+		form := url.Values{}
+		form.Set("id", strings.TrimSpace(request.UserID))
+		form.Set("source", strings.TrimSpace(number))
+		form.Set("source_type", "servicecall")
+		form.Set("comment_text", commentText)
+		_, err = c.doMultipartFormPostBytes(ctx, "/add_comment", form)
+	}
+	if err != nil {
 		return models.TicketDetail{}, err
 	}
 
@@ -689,12 +834,16 @@ func (c *Client) AddComment(ctx context.Context, number string, request models.A
 	detail, err := c.GetTicket(ctx, request.UserID, number)
 	if err != nil {
 		// На случай временной недоступности find_sc возвращаем минимально обновлённую карточку.
+		fallbackMsg := strings.TrimSpace(request.Message)
+		if fallbackMsg == "" && len(request.FileAttachments) > 0 {
+			fallbackMsg = "Прикреплён файл."
+		}
 		return models.TicketDetail{
 			Number: number,
 			Timeline: []models.CommentEntry{
 				{
 					Author:    "Пользователь",
-					Message:   strings.TrimSpace(request.Message),
+					Message:   fallbackMsg,
 					CreatedAt: time.Now().Format(time.RFC3339),
 				},
 			},
@@ -702,6 +851,121 @@ func (c *Client) AddComment(ctx context.Context, number string, request models.A
 	}
 
 	return detail, nil
+}
+
+// doAddCommentMultipart отправляет add_comment с полями формы и файлами в частях files.
+func (c *Client) doAddCommentMultipart(ctx context.Context, scNumber string, commentText string, request models.AddCommentRequest) error {
+	if c.baseURL == "" {
+		return errors.New("itilium base url is required")
+	}
+
+	body := &bytes.Buffer{}
+	mp := multipart.NewWriter(body)
+
+	if err := mp.WriteField("id", strings.TrimSpace(request.UserID)); err != nil {
+		return fmt.Errorf("write id: %w", err)
+	}
+	if err := mp.WriteField("source", strings.TrimSpace(scNumber)); err != nil {
+		return fmt.Errorf("write source: %w", err)
+	}
+	if err := mp.WriteField("source_type", "servicecall"); err != nil {
+		return fmt.Errorf("write source_type: %w", err)
+	}
+	if err := mp.WriteField("comment_text", commentText); err != nil {
+		return fmt.Errorf("write comment_text: %w", err)
+	}
+
+	for _, fa := range request.FileAttachments {
+		part, err := mp.CreateFormFile("files", fa.Filename)
+		if err != nil {
+			return fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := part.Write(fa.Data); err != nil {
+			return fmt.Errorf("write file: %w", err)
+		}
+	}
+
+	if err := mp.Close(); err != nil {
+		return fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/add_comment")
+	if err != nil {
+		return fmt.Errorf("parse itilium url: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), body)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", mp.FormDataContentType())
+	if c.login != "" {
+		httpReq.SetBasicAuth(c.login, c.password)
+	}
+
+	fileMeta := make([]string, 0, len(request.FileAttachments))
+	for _, fa := range request.FileAttachments {
+		fileMeta = append(fileMeta, fmt.Sprintf("%s:%dB", fa.Filename, len(fa.Data)))
+	}
+	c.logger.Info(
+		"itilium outbound add_comment (multipart fields)",
+		"url", endpoint.String(),
+		"send_id", strings.TrimSpace(request.UserID),
+		"send_source", strings.TrimSpace(scNumber),
+		"send_comment_text", truncateLogString(commentText, 4000),
+		"send_files_meta", strings.Join(fileMeta, ","),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+
+	start := time.Now()
+	response, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		c.logger.Error(
+			"itilium add_comment multipart failed",
+			"url", endpoint.String(),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return fmt.Errorf("perform request: %w", err)
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(respBody), "\ufeff")
+	c.logger.Info(
+		"itilium add_comment multipart completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"response_body", truncateLogString(respText, 8000),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+	c.logger.Debug(
+		"itilium add_comment multipart details",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"response_body", respText,
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+
+	if response.StatusCode >= 400 {
+		return HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return nil
 }
 
 // ChangeStatus changes the workflow status of a ticket.
@@ -758,6 +1022,27 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 	return detail, nil
 }
 
+// ConfirmTicket sends user rating via legacy confirm_sc (POST, query: telegram, incident, mark, optional comment_text).
+func (c *Client) ConfirmTicket(ctx context.Context, number string, request models.ConfirmTicketRequest) (models.TicketDetail, error) {
+	q := url.Values{}
+	q.Set("telegram", strings.TrimSpace(request.UserID))
+	q.Set("incident", strings.TrimSpace(number))
+	q.Set("mark", strconv.Itoa(request.Mark))
+	if comment := strings.TrimSpace(request.Comment); comment != "" {
+		q.Set("comment_text", comment)
+	}
+
+	if _, err := c.doPostEmptyQuery(ctx, "/confirm_sc", q); err != nil {
+		return models.TicketDetail{}, err
+	}
+
+	detail, err := c.GetTicket(ctx, request.UserID, number)
+	if err != nil {
+		return models.TicketDetail{Number: strings.TrimSpace(number)}, nil
+	}
+	return detail, nil
+}
+
 // SearchTicket searches a ticket by number.
 func (c *Client) SearchTicket(ctx context.Context, request models.SearchTicketRequest) (models.TicketDetail, error) {
 	// По контракту legacy поиск карточки выполняется через find_sc.
@@ -785,6 +1070,7 @@ func parseFindSCResponse(payload map[string]any, fallbackNumber string) models.T
 		ResponsibleTeam:      pickStringFromMap(source, "responsibleTeam", "responsibleTeamTitle", "ResponsibleTeam", "client", "OU", "Подразделение"),
 		CanChangeStatus:      boolFromAny(firstAny(source, "canChangeStatus", "change_status")),
 		CanChangeResponsible: boolFromAny(firstAny(source, "canChangeResponsible", "change_responsible")),
+		CanConfirmRating:     boolFromAny(firstAny(source, "canConfirmRating", "needRating", "confirm_rating", "need_confirm")),
 		AvailableStates:      firstStringSlice(source, "availableStates", "new_state", "newState"),
 	}
 
@@ -819,40 +1105,34 @@ func firstStringSlice(m map[string]any, keys ...string) []string {
 }
 
 // ListResponsibleOptions returns available assignees for the ticket.
+// На контуре 1С параметры нужно передавать в query URL; GET часто даёт 405, multipart с telegram — 500, поэтому сначала POST без тела.
 func (c *Client) ListResponsibleOptions(ctx context.Context, userID string, number string) ([]models.ResponsibleOption, error) {
-	form := url.Values{}
-	form.Set("id", strings.TrimSpace(userID))
-	form.Set("telegram", strings.TrimSpace(userID))
-	form.Set("sc_number", strings.TrimSpace(number))
+	uid := strings.TrimSpace(userID)
+	num := strings.TrimSpace(number)
 
-	payloadRaw, err := c.doMultipartFormPostBytes(ctx, "/responsibles_sc", form)
+	qID := url.Values{}
+	qID.Set("id", uid)
+	qID.Set("sc_number", num)
+
+	payloadRaw, err := c.doPostEmptyQuery(ctx, "/responsibles_sc", qID)
+	if err != nil {
+		qLegacy := url.Values{}
+		qLegacy.Set("telegram", uid)
+		qLegacy.Set("sc_number", num)
+		payloadRaw, err = c.doPostEmptyQuery(ctx, "/responsibles_sc", qLegacy)
+	}
+	if err != nil {
+		// Последний шанс: multipart только id + sc_number (без telegram — иначе падает РаботаСМакс на части публикаций).
+		form := url.Values{}
+		form.Set("id", uid)
+		form.Set("sc_number", num)
+		payloadRaw, err = c.doMultipartFormPostBytes(ctx, "/responsibles_sc", form)
+	}
 	if err != nil {
 		return nil, err
 	}
-	var payload []map[string]any
-	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
-		return nil, fmt.Errorf("decode responsibles_sc response: %w", err)
-	}
 
-	result := make([]models.ResponsibleOption, 0, len(payload))
-	for _, item := range payload {
-		externalID := pickStringFromMap(item, "externalId", "ExternalID", "responsibleEmployeeId", "employeeId", "id")
-		person := pickStringFromMap(item, "person", "Person", "responsibleEmployeeTitle", "employeeTitle", "title", "name", "fio")
-		team := pickStringFromMap(item, "team", "Team", "responsibleTeamTitle", "teamTitle", "subdivision")
-		role := pickStringFromMap(item, "role", "Role", "post", "position")
-
-		if externalID == "" && person == "" {
-			continue
-		}
-		result = append(result, models.ResponsibleOption{
-			Team:       team,
-			Person:     person,
-			Role:       role,
-			ExternalID: externalID,
-		})
-	}
-
-	return result, nil
+	return parseResponsiblesScResponse(payloadRaw)
 }
 
 // doJSON performs a JSON request and logs request and response metadata for troubleshooting.
@@ -1166,9 +1446,22 @@ func (c *DemoClient) CreateTicket(_ context.Context, request models.CreateTicket
 // AddComment appends a synthetic comment to the static ticket.
 func (c *DemoClient) AddComment(_ context.Context, number string, request models.AddCommentRequest) (models.TicketDetail, error) {
 	ticket := demoTicket(number)
+	msg := strings.TrimSpace(request.Message)
+	if msg == "" && len(request.FileAttachments) > 0 {
+		names := make([]string, 0, len(request.FileAttachments))
+		for _, fa := range request.FileAttachments {
+			if strings.TrimSpace(fa.Filename) != "" {
+				names = append(names, fa.Filename)
+			}
+		}
+		msg = "Прикреплён файл."
+		if len(names) > 0 {
+			msg = fmt.Sprintf("Вложения: %s.", strings.Join(names, ", "))
+		}
+	}
 	ticket.Timeline = append(ticket.Timeline, models.CommentEntry{
 		Author:    "Пользователь",
-		Message:   request.Message,
+		Message:   msg,
 		CreatedAt: time.Now().Format(time.RFC3339),
 	})
 
@@ -1186,6 +1479,17 @@ func (c *DemoClient) ChangeStatus(_ context.Context, number string, request mode
 func (c *DemoClient) ChangeResponsible(_ context.Context, number string, _ models.ChangeResponsibleRequest) (models.TicketDetail, error) {
 	ticket := demoTicket(number)
 	ticket.ResponsibleTeam = "Новый ответственный назначен"
+	return ticket, nil
+}
+
+// ConfirmTicket records a synthetic rating on the demo ticket.
+func (c *DemoClient) ConfirmTicket(_ context.Context, number string, request models.ConfirmTicketRequest) (models.TicketDetail, error) {
+	ticket := demoTicket(number)
+	ticket.Timeline = append(ticket.Timeline, models.CommentEntry{
+		Author:    "Пользователь",
+		Message:   fmt.Sprintf("Оценка отправлена: %d. %s", request.Mark, strings.TrimSpace(request.Comment)),
+		CreatedAt: time.Now().Format(time.RFC3339),
+	})
 	return ticket, nil
 }
 
@@ -1218,7 +1522,7 @@ func demoTicket(number string) models.TicketDetail {
 		Number:               number,
 		Title:                "Не открывается 1С на кассе",
 		Description:          "После обновления 1С не запускается на рабочем месте кассира.",
-		State:                "В работе",
+		State:                "08_Закрыто",
 		Deadline:             "11.04.2026",
 		ResponsibleTeam:      "Отдел ИТ",
 		CanChangeResponsible: true,

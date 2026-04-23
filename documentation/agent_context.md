@@ -50,6 +50,7 @@
 
 ## Next Steps
 
+- **E2E / регресс на тестовом контуре:** см. `documentation/e2e_test_plan.md` — варианты стека (Playwright и др.), сценарии (списки заявок, смена ответственного, комментарии, согласование) и привязка к среде.
 - **Local browser dev:** see `documentation/local_development.md` — `frontend/.env.development.local` (`VITE_DEBUG_USER_ID`, optional `VITE_PUBLIC_API_BASE_URL`), Vite proxy to backend on `127.0.0.1:3000`; restart Vite after env changes. For production-like checks, use real `initData` after bot moderation / HTTPS tunnel.
 - Verify `GET /api/v1/users/me` in the real environment and inspect the actual `find_employee` payload in logs/debugger.
 - After bot moderation finishes, raise an HTTPS tunnel through `tuna`, point the Telegram bot to that public URL, and then continue testing through the real bot entrypoint.

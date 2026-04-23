@@ -53,6 +53,7 @@ func (h *Handler) Routes() http.Handler {
 			router.Post("/tickets/{number}/status", h.ChangeStatus)
 			router.Get("/tickets/{number}/responsibles", h.ListResponsibleOptions)
 			router.Post("/tickets/{number}/responsible", h.ChangeResponsible)
+			router.Post("/tickets/{number}/confirm", h.ConfirmTicket)
 		})
 	})
 

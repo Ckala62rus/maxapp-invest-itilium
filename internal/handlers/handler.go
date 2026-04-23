@@ -329,9 +329,81 @@ func (h *Handler) GetTicket(writer http.ResponseWriter, request *http.Request) {
 // AddComment appends a comment to the selected ticket.
 func (h *Handler) AddComment(writer http.ResponseWriter, request *http.Request) {
 	var payload models.AddCommentRequest
-	if err := decodeJSON(request, &payload); err != nil {
-		h.writeError(writer, request, http.StatusBadRequest, err)
-		return
+
+	ct := request.Header.Get("Content-Type")
+	// С вложениями — multipart: поле payload (JSON) + повторяющиеся части attachments (как при создании заявки).
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := request.ParseMultipartForm(maxCreateTicketMultipartMemory); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+
+		payloadStr := request.FormValue("payload")
+		if strings.TrimSpace(payloadStr) == "" {
+			h.writeError(writer, request, http.StatusBadRequest, errors.New("payload field is required for multipart comment"))
+			return
+		}
+
+		if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+
+		if request.MultipartForm == nil {
+			h.writeError(writer, request, http.StatusBadRequest, errors.New("multipart form is empty"))
+			return
+		}
+
+		files := request.MultipartForm.File["attachments"]
+		if len(files) > maxAttachmentCount {
+			h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("too many attachments (max %d)", maxAttachmentCount))
+			return
+		}
+
+		payload.Attachments = nil
+		payload.FileAttachments = nil
+
+		for _, fh := range files {
+			if fh.Size > maxAttachmentSize {
+				h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("attachment %q exceeds size limit", fh.Filename))
+				return
+			}
+
+			f, err := fh.Open()
+			if err != nil {
+				h.writeError(writer, request, http.StatusBadRequest, err)
+				return
+			}
+
+			data, err := io.ReadAll(io.LimitReader(f, maxAttachmentSize+1))
+			_ = f.Close()
+			if err != nil {
+				h.writeError(writer, request, http.StatusBadRequest, err)
+				return
+			}
+
+			if int64(len(data)) > maxAttachmentSize {
+				h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("attachment %q exceeds size limit", fh.Filename))
+				return
+			}
+
+			ctype := fh.Header.Get("Content-Type")
+			if ctype == "" {
+				ctype = http.DetectContentType(data)
+			}
+
+			payload.FileAttachments = append(payload.FileAttachments, models.FileAttachment{
+				Filename:    fh.Filename,
+				ContentType: ctype,
+				Data:        data,
+			})
+			payload.Attachments = append(payload.Attachments, fh.Filename)
+		}
+	} else {
+		if err := decodeJSON(request, &payload); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
 	}
 
 	// Кто пишет комментарий — всегда из сессии (не доверяем телу запроса).
@@ -379,6 +451,24 @@ func (h *Handler) ChangeResponsible(writer http.ResponseWriter, request *http.Re
 	}
 
 	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Message: "responsible changed", Data: ticket})
+}
+
+// ConfirmTicket sends resolution rating to ITILIUM (confirm_sc).
+func (h *Handler) ConfirmTicket(writer http.ResponseWriter, request *http.Request) {
+	var payload models.ConfirmTicketRequest
+	if err := decodeJSON(request, &payload); err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	payload.UserID = middleware.UserIDFromContext(request.Context())
+	ticket, err := h.ticketService.ConfirmTicket(request.Context(), request.PathValue("number"), payload)
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Message: "rating submitted", Data: ticket})
 }
 
 // ListResponsibleOptions returns available assignees for the selected ticket.

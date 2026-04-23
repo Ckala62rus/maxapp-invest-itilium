@@ -59,9 +59,34 @@ const getTicketDetails = (number) => {
   return axios.get(urls.ticketDetails(number))
 }
 
-/** Комментарий к заявке; ответ — обновлённая карточка. */
+/**
+ * Комментарий к заявке; ответ — обновлённая карточка.
+ * Без файлов — JSON; с файлами — multipart (`payload` + части `attachments`), как при создании заявки.
+ */
 const addComment = (number, payload) => {
-  return axios.post(urls.ticketComments(number), payload)
+  const { attachmentFiles, ...fields } = payload
+  const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+
+  if (files.length === 0) {
+    return axios.post(urls.ticketComments(number), {
+      message: fields.message,
+      attachments: fields.attachments || []
+    })
+  }
+
+  const formData = new FormData()
+  formData.append(
+    'payload',
+    JSON.stringify({
+      message: fields.message || '',
+      attachments: []
+    })
+  )
+  files.forEach((file) => {
+    formData.append('attachments', file)
+  })
+
+  return axios.post(urls.ticketComments(number), formData)
 }
 
 /** Смена статуса (workflow). */
@@ -79,6 +104,11 @@ const changeResponsible = (number, payload) => {
   return axios.post(urls.ticketResponsible(number), payload)
 }
 
+/** Оценка решения (confirm_sc). */
+const confirmTicket = (number, payload) => {
+  return axios.post(urls.ticketConfirm(number), payload)
+}
+
 export default {
   listMyTickets,
   createTicket,
@@ -88,5 +118,6 @@ export default {
   addComment,
   changeStatus,
   listResponsibleOptions,
-  changeResponsible
+  changeResponsible,
+  confirmTicket
 }

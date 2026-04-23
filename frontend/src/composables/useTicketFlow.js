@@ -1,4 +1,5 @@
 import { computed, ref, watch } from 'vue'
+import Swal from 'sweetalert2'
 
 import {
   actionTypes as ticketActionTypes,
@@ -21,8 +22,13 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   // The current list page shows how pagination will look in the future app.
   const currentTicketsPage = ref(1)
 
-  // The comment draft keeps the prototype form editable until comment actions move to API.
-  const commentDraft = ref('Нужна срочная проверка после ночного обновления.')
+  // Текст комментария в карточке; вложения — отдельным списком File (multipart на бэкенд).
+  const commentDraft = ref('')
+  const commentAttachmentFiles = ref([])
+  /** Увеличивается после успешной отправки комментария — экран карточки закрывает панель и показывает короткое уведомление. */
+  const commentSuccessTick = ref(0)
+  /** После успешной отправки оценки — закрыть панель оценки в карточке. */
+  const ratingSuccessTick = ref(0)
   const detailsOrigin = ref('search')
 
   // The status form mirrors the backend transition contract used by the ticket card.
@@ -106,6 +112,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const isSubmittingComment = computed(() => store.getters[ticketGetterTypes.isSubmittingComment])
   const isChangingStatus = computed(() => store.getters[ticketGetterTypes.isChangingStatus])
   const isChangingResponsible = computed(() => store.getters[ticketGetterTypes.isChangingResponsible])
+  const isSubmittingTicketRating = computed(() => store.getters[ticketGetterTypes.isSubmittingTicketRating])
   const listErrors = computed(() => store.getters[ticketGetterTypes.listError] || [])
   const ticketErrors = computed(() => store.getters[ticketGetterTypes.ticketError] || [])
   const createErrors = computed(() => store.getters[ticketGetterTypes.createError] || [])
@@ -252,8 +259,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
   // When a new detail payload arrives, derived forms stay in sync with the same
   // Vuex source of truth instead of preserving stale values from the previous ticket.
-  watch(selectedTicket, async (ticket) => {
-    commentDraft.value = 'Нужна срочная проверка после ночного обновления.'
+  watch(selectedTicket, (ticket) => {
+    commentDraft.value = ''
+    commentAttachmentFiles.value = []
     selectedResponsibleId.value = ''
     statusForm.value = {
       state: ticket?.availableStates?.[0] || '',
@@ -261,9 +269,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       date: ticket?.deadline || ''
     }
 
-    if (ticket?.number && ticket.canChangeResponsible) {
-      await store.dispatch(ticketActionTypes.loadResponsibleOptions, ticket.number)
-    }
   }, { immediate: true })
 
   function loadTicketLists() {
@@ -342,22 +347,41 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   }
 
   async function submitComment() {
-    if (!selectedTicket.value?.number || !commentDraft.value.trim()) {
+    if (!selectedTicket.value?.number) {
+      return
+    }
+
+    const text = commentDraft.value.trim()
+    const files = commentAttachmentFiles.value || []
+    if (!text && files.length === 0) {
       return
     }
 
     const response = await store.dispatch(ticketActionTypes.addComment, {
       number: selectedTicket.value.number,
       data: {
-        message: commentDraft.value.trim(),
-        attachments: []
+        message: text,
+        attachments: [],
+        attachmentFiles: files
       }
     })
 
     if (response?.data?.success) {
       commentDraft.value = ''
-      submitBanner.value = 'Комментарий отправлен и карточка заявки обновлена.'
+      commentAttachmentFiles.value = []
+      commentSuccessTick.value += 1
     }
+  }
+
+  function addCommentAttachments(fileList) {
+    const next = Array.from(fileList || []).filter((f) => f instanceof File)
+    commentAttachmentFiles.value = [...(commentAttachmentFiles.value || []), ...next]
+  }
+
+  function removeCommentAttachment(index) {
+    const list = [...(commentAttachmentFiles.value || [])]
+    list.splice(index, 1)
+    commentAttachmentFiles.value = list
   }
 
   async function submitStatusChange() {
@@ -384,6 +408,20 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       return
     }
 
+    const confirm = await Swal.fire({
+      title: 'Смена ответственного',
+      text: 'Назначить выбранного сотрудника ответственным по этой заявке?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Да, назначить',
+      cancelButtonText: 'Отмена',
+      reverseButtons: true,
+      focusCancel: true
+    })
+    if (!confirm.isConfirmed) {
+      return
+    }
+
     selectedResponsibleId.value = responsibleId
 
     const response = await store.dispatch(ticketActionTypes.changeResponsible, {
@@ -399,6 +437,33 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
 
     selectedResponsibleId.value = ''
+  }
+
+  async function requestResponsibleOptions(number) {
+    const n = String(number || '').trim()
+    if (!n) {
+      return
+    }
+    await store.dispatch(ticketActionTypes.loadResponsibleOptions, n)
+  }
+
+  async function submitTicketRating(payload) {
+    if (!selectedTicket.value?.number || payload?.mark === undefined || payload?.mark === null) {
+      return
+    }
+
+    const response = await store.dispatch(ticketActionTypes.confirmTicket, {
+      number: selectedTicket.value.number,
+      data: {
+        mark: payload.mark,
+        comment: payload.comment || ''
+      }
+    })
+
+    if (response?.data?.success) {
+      ratingSuccessTick.value += 1
+      submitBanner.value = 'Оценка отправлена.'
+    }
   }
 
   // This helper changes the pager while keeping the prototype deterministic.
@@ -418,6 +483,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     searchQuery,
     currentTicketsPage,
     commentDraft,
+    commentAttachmentFiles,
+    commentSuccessTick,
+    ratingSuccessTick,
     detailsOrigin,
     statusForm,
     selectedResponsibleId,
@@ -430,6 +498,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     isSubmittingComment,
     isChangingStatus,
     isChangingResponsible,
+    isSubmittingTicketRating,
     listErrors,
     ticketErrors,
     createErrors,
@@ -454,8 +523,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     addCreateAttachments,
     removeCreateAttachment,
     submitComment,
+    addCommentAttachments,
+    removeCommentAttachment,
     submitStatusChange,
     assignResponsible,
+    requestResponsibleOptions,
+    submitTicketRating,
     setTicketsPage,
     setSearchQuery,
     setCommentDraft

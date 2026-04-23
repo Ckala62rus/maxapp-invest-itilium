@@ -54,6 +54,10 @@ func (s *itiliumClientStub) ListResponsibleOptions(_ context.Context, _ string, 
 	return []models.ResponsibleOption{{ExternalID: "1"}}, nil
 }
 
+func (s *itiliumClientStub) ConfirmTicket(_ context.Context, number string, _ models.ConfirmTicketRequest) (models.TicketDetail, error) {
+	return models.TicketDetail{Number: number}, nil
+}
+
 func TestTicketServiceGetTicketUsesCache(t *testing.T) {
 	client := &itiliumClientStub{}
 	service := NewTicketService(client, repository.NewRedisCache(nil))
@@ -69,6 +73,14 @@ func TestTicketServiceCreateTicketValidatesInput(t *testing.T) {
 	service := NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
 
 	_, err := service.CreateTicket(context.Background(), models.CreateTicketRequest{})
+
+	require.Error(t, err)
+}
+
+func TestTicketServiceAddCommentRequiresMessageOrAttachment(t *testing.T) {
+	service := NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
+
+	_, err := service.AddComment(context.Background(), "SC-1", models.AddCommentRequest{})
 
 	require.Error(t, err)
 }

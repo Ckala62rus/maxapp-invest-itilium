@@ -47,7 +47,6 @@ function openScreen(screenId) {
         <div class="avatar">{{ profileInitials }}</div>
         <div>
           <h3>{{ currentUser?.fullName || 'Загрузка профиля...' }}</h3>
-          <p>@{{ currentUser?.username || 'unknown' }}</p>
         </div>
       </div>
       <div class="details-grid">
