@@ -143,6 +143,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
+      - grafana_data_dev:/var/lib/grafana
       - ./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
     depends_on:
       - loki
@@ -152,6 +153,7 @@ services:
 
 volumes:
   postgres_data_dev:
+  grafana_data_dev:
   frontend_node_modules:
   go_mod_cache:
   go_build_cache:

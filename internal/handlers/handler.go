@@ -208,7 +208,7 @@ func (h *Handler) SearchTicket(writer http.ResponseWriter, request *http.Request
 const (
 	maxCreateTicketMultipartMemory = 32 << 20 // весь multipart в памяти до ~32 MiB
 	maxAttachmentSize              = 15 << 20 // один файл не больше ~15 MiB
-	maxAttachmentCount             = 20        // не больше 20 вложений за один запрос
+	maxAttachmentCount             = 20       // не больше 20 вложений за один запрос
 )
 
 // CreateTicket creates a new ticket through the service layer.
@@ -469,6 +469,120 @@ func (h *Handler) ConfirmTicket(writer http.ResponseWriter, request *http.Reques
 	}
 
 	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Message: "rating submitted", Data: ticket})
+}
+
+// ListMarketingServices returns available marketing types with dynamic form numbers.
+func (h *Handler) ListMarketingServices(writer http.ResponseWriter, request *http.Request) {
+	services, err := h.ticketService.ListMarketingServices(request.Context(), middleware.UserIDFromContext(request.Context()))
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: services})
+}
+
+// ListMarketingSubdivisions returns available subdivisions for the marketing flow.
+func (h *Handler) ListMarketingSubdivisions(writer http.ResponseWriter, request *http.Request) {
+	subdivisions, err := h.ticketService.ListMarketingSubdivisions(request.Context(), middleware.UserIDFromContext(request.Context()))
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: subdivisions})
+}
+
+// CreateMarketingRequest creates a marketing request using dynamic step-4 form payload.
+func (h *Handler) CreateMarketingRequest(writer http.ResponseWriter, request *http.Request) {
+	var payload models.CreateMarketingRequest
+
+	ct := request.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := request.ParseMultipartForm(maxCreateTicketMultipartMemory); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+
+		payloadStr := request.FormValue("payload")
+		if strings.TrimSpace(payloadStr) == "" {
+			h.writeError(writer, request, http.StatusBadRequest, errors.New("payload field is required for multipart marketing request"))
+			return
+		}
+
+		if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+
+		if request.MultipartForm == nil {
+			h.writeError(writer, request, http.StatusBadRequest, errors.New("multipart form is empty"))
+			return
+		}
+
+		files := request.MultipartForm.File["attachments"]
+		if len(files) > maxAttachmentCount {
+			h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("too many attachments (max %d)", maxAttachmentCount))
+			return
+		}
+
+		payload.Attachments = nil
+		payload.FileAttachments = nil
+		for _, fh := range files {
+			if fh.Size > maxAttachmentSize {
+				h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("attachment %q exceeds size limit", fh.Filename))
+				return
+			}
+
+			f, err := fh.Open()
+			if err != nil {
+				h.writeError(writer, request, http.StatusBadRequest, err)
+				return
+			}
+
+			data, err := io.ReadAll(io.LimitReader(f, maxAttachmentSize+1))
+			_ = f.Close()
+			if err != nil {
+				h.writeError(writer, request, http.StatusBadRequest, err)
+				return
+			}
+
+			if int64(len(data)) > maxAttachmentSize {
+				h.writeError(writer, request, http.StatusBadRequest, fmt.Errorf("attachment %q exceeds size limit", fh.Filename))
+				return
+			}
+
+			ctype := fh.Header.Get("Content-Type")
+			if ctype == "" {
+				ctype = http.DetectContentType(data)
+			}
+
+			payload.FileAttachments = append(payload.FileAttachments, models.FileAttachment{
+				Filename:    fh.Filename,
+				ContentType: ctype,
+				Data:        data,
+			})
+			payload.Attachments = append(payload.Attachments, fh.Filename)
+		}
+	} else {
+		if err := decodeJSON(request, &payload); err != nil {
+			h.writeError(writer, request, http.StatusBadRequest, err)
+			return
+		}
+	}
+
+	payload.UserID = middleware.UserIDFromContext(request.Context())
+	ticket, err := h.ticketService.CreateMarketingRequest(request.Context(), payload)
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusCreated, models.APIResponse{
+		Success: true,
+		Message: "marketing request created",
+		Data:    ticket,
+	})
 }
 
 // ListResponsibleOptions returns available assignees for the selected ticket.

@@ -134,3 +134,21 @@ Every request passes through the same middleware chain defined in `internal/hand
   - decodes rating `mark` (0–5) and optional `comment` (required in service for marks 0–2)
   - calls ITILIUM `confirm_sc` (legacy POST with query `telegram`, `incident`, `mark`, optional `comment_text`)
   - returns refreshed ticket detail from `find_sc`
+
+### `GET /api/v1/marketing/services`
+- Handler: `Handler.ListMarketingServices`
+- Service: `TicketService.ListMarketingServices`
+- Middleware: `RequireIdentity` (Bearer или debug `X-User-ID`)
+- Flow: читает маркетинговые типы и `formNumber`/схему из ITILIUM (`GET /listServicesMarketing?id=...`; 1С возвращает `КомпонентаУслуги` + `НомерФормы`).
+
+### `GET /api/v1/marketing/subdivisions`
+- Handler: `Handler.ListMarketingSubdivisions`
+- Service: `TicketService.ListMarketingSubdivisions`
+- Middleware: `RequireIdentity`
+- Flow: подразделения для шага 2 (`GET /listSubdivisionMarketing?id=...`; успешный ответ — массив названий подразделений, сейчас на тестовом контуре для `40367639` приходит `[]`).
+
+### `POST /api/v1/marketing/requests`
+- Handler: `Handler.CreateMarketingRequest`
+- Service: `TicketService.CreateMarketingRequest`
+- Middleware: `RequireIdentity`
+- Flow: создаёт маркетинговую заявку через `POST /create_sc_Marketing` multipart (`id`, `Services`, `Subdivision`, `ExecutionDate`, `files` и service-specific поля).

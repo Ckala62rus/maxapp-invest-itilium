@@ -178,6 +178,76 @@ type FileAttachment struct {
 	Data []byte
 }
 
+// MarketingFormField describes one dynamic field from a marketing form schema.
+type MarketingFormField struct {
+	// Key stores the machine-readable field identifier.
+	Key string `json:"key"`
+	// Label stores the user-facing field label.
+	Label string `json:"label"`
+	// Type stores UI control type (text, textarea, select, number, date, links).
+	Type string `json:"type"`
+	// Required tells whether the field must be filled.
+	Required bool `json:"required"`
+	// Placeholder stores optional UI hint inside the control.
+	Placeholder string `json:"placeholder,omitempty"`
+	// Hint stores optional helper text below the control.
+	Hint string `json:"hint,omitempty"`
+	// Options stores selectable values for select-like fields.
+	Options []string `json:"options,omitempty"`
+}
+
+// MarketingFormSchema stores a normalized dynamic schema identified by ITILIUM form number.
+type MarketingFormSchema struct {
+	// FormNumber stores the 1C form identifier used by the frontend renderer.
+	FormNumber string `json:"formNumber"`
+	// Title stores the human-readable schema title.
+	Title string `json:"title,omitempty"`
+	// Fields stores all dynamic controls required by the selected marketing type.
+	Fields []MarketingFormField `json:"fields"`
+}
+
+// MarketingServiceType describes one selectable marketing request type from ITILIUM.
+type MarketingServiceType struct {
+	// Code stores the internal type code used by ITILIUM.
+	Code string `json:"code"`
+	// Name stores the display name shown in the UI.
+	Name string `json:"name"`
+	// FormNumber stores the dynamic form number associated with this type.
+	FormNumber string `json:"formNumber"`
+	// FormSchema stores the normalized dynamic field definition for step 4.
+	FormSchema MarketingFormSchema `json:"formSchema"`
+}
+
+// MarketingSubdivision describes one selectable subdivision for marketing requests.
+type MarketingSubdivision struct {
+	// Code stores the subdivision identifier when available.
+	Code string `json:"code,omitempty"`
+	// Name stores the subdivision display label.
+	Name string `json:"name"`
+}
+
+// CreateMarketingRequest stores the payload for a 4-step marketing ticket flow.
+type CreateMarketingRequest struct {
+	// UserID stores the acting MAX user identifier.
+	UserID string `json:"userId"`
+	// ServiceCode stores selected marketing service/type code from ITILIUM.
+	ServiceCode string `json:"serviceCode"`
+	// FormNumber stores selected dynamic form number from ITILIUM.
+	FormNumber string `json:"formNumber"`
+	// Subdivision stores selected marketing subdivision.
+	Subdivision string `json:"subdivision"`
+	// ExecutionDate stores requested execution date; may be empty when date is omitted.
+	ExecutionDate string `json:"executionDate"`
+	// WithoutDate stores explicit "without date" flag from the UI.
+	WithoutDate bool `json:"withoutDate"`
+	// FormData stores dynamic key/value map filled on step 4.
+	FormData map[string]string `json:"formData"`
+	// Attachments stores uploaded file names or references.
+	Attachments []string `json:"attachments"`
+	// FileAttachments stores raw uploads when the client sends multipart/form-data.
+	FileAttachments []FileAttachment `json:"-"`
+}
+
 // CreateTicketRequest stores the payload used to create a new ticket.
 type CreateTicketRequest struct {
 	// UserID stores the acting MAX user identifier.

@@ -25,13 +25,59 @@ defineProps({
     type: String,
     required: true
   },
+  marketingErrorMessage: {
+    type: String,
+    required: true
+  },
+  marketingServices: {
+    type: Array,
+    required: true
+  },
+  marketingSubdivisions: {
+    type: Array,
+    required: true
+  },
+  isLoadingMarketingServices: {
+    type: Boolean,
+    required: true
+  },
+  isLoadingMarketingSubdivisions: {
+    type: Boolean,
+    required: true
+  },
+  isCreatingMarketingRequest: {
+    type: Boolean,
+    required: true
+  },
+  marketingFormData: {
+    type: Object,
+    required: true
+  },
+  selectedMarketingService: {
+    type: Object,
+    required: false,
+    default: null
+  },
+  currentMarketingSchema: {
+    type: Object,
+    required: false,
+    default: null
+  },
   isCreatingTicket: {
     type: Boolean,
     required: true
   }
 })
 
-const emit = defineEmits(['submit-create-ticket', 'open-screen', 'set-execution-date', 'add-attachments', 'remove-attachment'])
+const emit = defineEmits([
+  'submit-create-ticket',
+  'open-screen',
+  'set-execution-date',
+  'add-attachments',
+  'remove-attachment',
+  'set-marketing-service',
+  'set-marketing-field'
+])
 
 // Экран только редактирует общий объект формы из App.vue: отправка и переход на карточку — в composable/store.
 function submitCreateTicket() {
@@ -53,6 +99,14 @@ function addAttachments(event) {
 
 function removeAttachment(index) {
   emit('remove-attachment', index)
+}
+
+function setMarketingService(value) {
+  emit('set-marketing-service', value)
+}
+
+function setMarketingField(key, value) {
+  emit('set-marketing-field', key, value)
 }
 </script>
 
@@ -79,48 +133,129 @@ function removeAttachment(index) {
         </select>
         <small v-if="createValidationStarted && createValidationErrors.requestType" class="field-error">{{ createValidationErrors.requestType }}</small>
       </label>
-      <label>
-        Краткая тема
-        <input
-          v-model="createTicketForm.title"
-          type="text"
-          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.title }"
-        />
-        <small v-if="createValidationStarted && createValidationErrors.title" class="field-error">{{ createValidationErrors.title }}</small>
-      </label>
-      <label>
-        Подробное описание
-        <textarea
-          v-model="createTicketForm.description"
-          rows="5"
-          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.description }"
-        ></textarea>
-        <small v-if="createValidationStarted && createValidationErrors.description" class="field-error">{{ createValidationErrors.description }}</small>
-      </label>
-      <label>
-        Подразделение
-        <select
-          v-model="createTicketForm.department"
-          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
-        >
-          <option>Отдел ИТ</option>
-          <option>Маркетинг</option>
-        </select>
-        <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
-      </label>
-      <label>
-        Исполнить до
-        <input
-          type="date"
-          class="date-field"
-          :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
-          :value="createTicketForm.executionDate || ''"
-          @input="setExecutionDate($event.target.value)"
-        />
-        <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
-      </label>
+      <template v-if="createTicketForm.requestType !== 'Маркетинговая заявка'">
+        <label>
+          Краткая тема
+          <input
+            v-model="createTicketForm.title"
+            type="text"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.title }"
+          />
+          <small v-if="createValidationStarted && createValidationErrors.title" class="field-error">{{ createValidationErrors.title }}</small>
+        </label>
+        <label>
+          Подробное описание
+          <textarea
+            v-model="createTicketForm.description"
+            rows="5"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.description }"
+          ></textarea>
+          <small v-if="createValidationStarted && createValidationErrors.description" class="field-error">{{ createValidationErrors.description }}</small>
+        </label>
+        <label>
+          Подразделение
+          <input
+            v-model="createTicketForm.department"
+            type="text"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
+          />
+          <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
+        </label>
+        <label>
+          Исполнить до
+          <input
+            type="date"
+            class="date-field"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
+            :value="createTicketForm.executionDate || ''"
+            @input="setExecutionDate($event.target.value)"
+          />
+          <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
+        </label>
+      </template>
 
-      <p v-if="createErrorMessage" class="status-pill rose">{{ createErrorMessage }}</p>
+      <template v-else>
+        <label>
+          Тип маркетинговой заявки
+          <select
+            :value="selectedMarketingService?.code || ''"
+            :disabled="isLoadingMarketingServices || isCreatingMarketingRequest"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.serviceCode }"
+            @change="setMarketingService($event.target.value)"
+          >
+            <option value="" disabled>Выберите тип</option>
+            <option v-for="service in marketingServices" :key="service.code" :value="service.code">
+              {{ service.name }} (форма {{ service.formNumber || '—' }})
+            </option>
+          </select>
+          <small v-if="createValidationStarted && createValidationErrors.serviceCode" class="field-error">{{ createValidationErrors.serviceCode }}</small>
+        </label>
+
+        <label>
+          Подразделение
+          <select
+            v-model="createTicketForm.department"
+            :disabled="isLoadingMarketingSubdivisions || isCreatingMarketingRequest"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
+          >
+            <option value="" disabled>Выберите подразделение</option>
+            <option v-for="subdivision in marketingSubdivisions" :key="subdivision.code || subdivision.name" :value="subdivision.name">
+              {{ subdivision.name }}
+            </option>
+          </select>
+          <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
+        </label>
+
+        <label>
+          Желаемая дата исполнения
+          <input
+            type="text"
+            class="date-field"
+            inputmode="numeric"
+            placeholder="ДД.ММ.ГГГГ"
+            :disabled="isCreatingMarketingRequest"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
+            :value="createTicketForm.executionDate || ''"
+            @input="setExecutionDate($event.target.value)"
+          />
+          <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
+        </label>
+
+        <div class="content-card" style="padding: 12px">
+          <p class="eyebrow">Параметры заявки</p>
+          <p v-if="currentMarketingSchema?.formNumber">Форма № {{ currentMarketingSchema.formNumber }}</p>
+          <div v-for="field in currentMarketingSchema?.fields || []" :key="field.key">
+            <label>
+              {{ field.label }} <span v-if="field.required">*</span>
+              <select
+                v-if="field.type === 'select'"
+                :value="marketingFormData[field.key] || ''"
+                @change="setMarketingField(field.key, $event.target.value)"
+              >
+                <option value="" disabled>Выберите вариант</option>
+                <option v-for="option in field.options || []" :key="field.key + option" :value="option">{{ option }}</option>
+              </select>
+              <textarea
+                v-else-if="field.type === 'textarea'"
+                rows="4"
+                :value="marketingFormData[field.key] || ''"
+                @input="setMarketingField(field.key, $event.target.value)"
+              ></textarea>
+              <input
+                v-else
+                type="text"
+                :value="marketingFormData[field.key] || ''"
+                @input="setMarketingField(field.key, $event.target.value)"
+              />
+              <small v-if="createValidationStarted && createValidationErrors['form_' + field.key]" class="field-error">
+                {{ createValidationErrors['form_' + field.key] }}
+              </small>
+            </label>
+          </div>
+        </div>
+      </template>
+
+      <p v-if="createErrorMessage || marketingErrorMessage" class="status-pill rose">{{ createErrorMessage || marketingErrorMessage }}</p>
 
       <div class="upload-box">
         <div>
@@ -155,11 +290,11 @@ function removeAttachment(index) {
         <button
           class="primary-button"
           type="submit"
-          :disabled="isCreatingTicket"
+          :disabled="isCreatingTicket || isCreatingMarketingRequest"
         >
-          {{ isCreatingTicket ? 'Отправка...' : 'Отправить заявку' }}
+          {{ (isCreatingTicket || isCreatingMarketingRequest) ? 'Отправка...' : 'Отправить заявку' }}
         </button>
-        <button class="secondary-button" type="button" :disabled="isCreatingTicket" @click="openScreen('home')">Отмена</button>
+        <button class="secondary-button" type="button" :disabled="isCreatingTicket || isCreatingMarketingRequest" @click="openScreen('home')">Отмена</button>
       </div>
     </form>
   </section>

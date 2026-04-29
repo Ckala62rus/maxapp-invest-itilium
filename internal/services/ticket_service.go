@@ -35,6 +35,12 @@ type ItiliumClient interface {
 	ListResponsibleOptions(ctx context.Context, userID string, number string) ([]models.ResponsibleOption, error)
 	// ConfirmTicket sends resolution rating (legacy confirm_sc).
 	ConfirmTicket(ctx context.Context, number string, request models.ConfirmTicketRequest) (models.TicketDetail, error)
+	// ListMarketingServices returns available marketing types with form numbers/schemas.
+	ListMarketingServices(ctx context.Context, userID string) ([]models.MarketingServiceType, error)
+	// ListMarketingSubdivisions returns available subdivisions for marketing requests.
+	ListMarketingSubdivisions(ctx context.Context, userID string) ([]models.MarketingSubdivision, error)
+	// CreateMarketingRequest creates a marketing request through legacy 1C endpoint.
+	CreateMarketingRequest(ctx context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error)
 }
 
 // TicketService orchestrates ticket list and workflow use cases.
@@ -195,4 +201,48 @@ func (s *TicketService) ConfirmTicket(ctx context.Context, number string, reques
 	}
 
 	return s.client.ConfirmTicket(ctx, number, request)
+}
+
+// ListMarketingServices returns available marketing service types for the current user.
+func (s *TicketService) ListMarketingServices(ctx context.Context, userID string) ([]models.MarketingServiceType, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, errors.New("user id is required")
+	}
+
+	// Источник истины по типам и номеру формы — только 1С.
+	return s.client.ListMarketingServices(ctx, userID)
+}
+
+// ListMarketingSubdivisions returns available marketing subdivisions from ITILIUM.
+func (s *TicketService) ListMarketingSubdivisions(ctx context.Context, userID string) ([]models.MarketingSubdivision, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, errors.New("user id is required")
+	}
+
+	return s.client.ListMarketingSubdivisions(ctx, userID)
+}
+
+// CreateMarketingRequest validates and creates a dynamic-form marketing request.
+func (s *TicketService) CreateMarketingRequest(ctx context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error) {
+	if strings.TrimSpace(request.UserID) == "" {
+		return models.TicketDetail{}, errors.New("user id is required")
+	}
+	if strings.TrimSpace(request.ServiceCode) == "" {
+		return models.TicketDetail{}, errors.New("service code is required")
+	}
+	if strings.TrimSpace(request.FormNumber) == "" {
+		return models.TicketDetail{}, errors.New("form number is required")
+	}
+	if strings.TrimSpace(request.Subdivision) == "" {
+		return models.TicketDetail{}, errors.New("subdivision is required")
+	}
+	if !request.WithoutDate && strings.TrimSpace(request.ExecutionDate) == "" {
+		return models.TicketDetail{}, errors.New("execution date is required")
+	}
+	if len(request.FormData) == 0 {
+		return models.TicketDetail{}, errors.New("form data is required")
+	}
+
+	// 4-й шаг полностью динамический, поля валидируются на 1С стороне по номеру формы.
+	return s.client.CreateMarketingRequest(ctx, request)
 }

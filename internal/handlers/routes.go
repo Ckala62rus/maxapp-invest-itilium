@@ -54,6 +54,9 @@ func (h *Handler) Routes() http.Handler {
 			router.Get("/tickets/{number}/responsibles", h.ListResponsibleOptions)
 			router.Post("/tickets/{number}/responsible", h.ChangeResponsible)
 			router.Post("/tickets/{number}/confirm", h.ConfirmTicket)
+			router.Get("/marketing/services", h.ListMarketingServices)
+			router.Get("/marketing/subdivisions", h.ListMarketingSubdivisions)
+			router.Post("/marketing/requests", h.CreateMarketingRequest)
 		})
 	})
 

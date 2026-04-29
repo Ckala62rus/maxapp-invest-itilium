@@ -12,7 +12,16 @@ function normalizeTicketError(error) {
   if (statusCode === 404 || /status 404/i.test(rawMessage)) {
     return 'Заявка не найдена в ITILIUM.'
   }
-  if (statusCode === 400 || /ticket number is required/i.test(rawMessage)) {
+  if (statusCode === 400) {
+    if (/ticket number is required/i.test(rawMessage)) {
+      return 'Проверьте номер заявки и повторите запрос.'
+    }
+    if (backendMessage && String(backendMessage).trim()) {
+      return String(backendMessage).trim()
+    }
+    return 'Проверьте номер заявки и повторите запрос.'
+  }
+  if (/ticket number is required/i.test(rawMessage)) {
     return 'Проверьте номер заявки и повторите запрос.'
   }
   if (/mark must be between 0 and 5/i.test(rawMessage)) {
@@ -48,9 +57,15 @@ const state = {
   isChangingStatus: false,
   isChangingResponsible: false,
   isSubmittingTicketRating: false,
+  isLoadingMarketingServices: false,
+  isLoadingMarketingSubdivisions: false,
+  isCreatingMarketingRequest: false,
+  marketingServices: [],
+  marketingSubdivisions: [],
   listError: [],
   ticketError: [],
-  createError: []
+  createError: [],
+  marketingError: []
 }
 
 export const mutationTypes = {
@@ -80,7 +95,16 @@ export const mutationTypes = {
   changeResponsibleFail: '[tickets] changeResponsibleFail',
   confirmTicketStart: '[tickets] confirmTicketStart',
   confirmTicketSuccess: '[tickets] confirmTicketSuccess',
-  confirmTicketFail: '[tickets] confirmTicketFail'
+  confirmTicketFail: '[tickets] confirmTicketFail',
+  loadMarketingServicesStart: '[tickets] loadMarketingServicesStart',
+  loadMarketingServicesSuccess: '[tickets] loadMarketingServicesSuccess',
+  loadMarketingServicesFail: '[tickets] loadMarketingServicesFail',
+  loadMarketingSubdivisionsStart: '[tickets] loadMarketingSubdivisionsStart',
+  loadMarketingSubdivisionsSuccess: '[tickets] loadMarketingSubdivisionsSuccess',
+  loadMarketingSubdivisionsFail: '[tickets] loadMarketingSubdivisionsFail',
+  createMarketingRequestStart: '[tickets] createMarketingRequestStart',
+  createMarketingRequestSuccess: '[tickets] createMarketingRequestSuccess',
+  createMarketingRequestFail: '[tickets] createMarketingRequestFail'
 }
 
 export const actionTypes = {
@@ -93,7 +117,10 @@ export const actionTypes = {
   addComment: '[tickets] addComment',
   changeStatus: '[tickets] changeStatus',
   changeResponsible: '[tickets] changeResponsible',
-  confirmTicket: '[tickets] confirmTicket'
+  confirmTicket: '[tickets] confirmTicket',
+  loadMarketingServices: '[tickets] loadMarketingServices',
+  loadMarketingSubdivisions: '[tickets] loadMarketingSubdivisions',
+  createMarketingRequest: '[tickets] createMarketingRequest'
 }
 
 export const getterTypes = {
@@ -110,9 +137,15 @@ export const getterTypes = {
   isChangingStatus: '[tickets] isChangingStatus',
   isChangingResponsible: '[tickets] isChangingResponsible',
   isSubmittingTicketRating: '[tickets] isSubmittingTicketRating',
+  isLoadingMarketingServices: '[tickets] isLoadingMarketingServices',
+  isLoadingMarketingSubdivisions: '[tickets] isLoadingMarketingSubdivisions',
+  isCreatingMarketingRequest: '[tickets] isCreatingMarketingRequest',
+  marketingServices: '[tickets] marketingServices',
+  marketingSubdivisions: '[tickets] marketingSubdivisions',
   listError: '[tickets] listError',
   ticketError: '[tickets] ticketError',
-  createError: '[tickets] createError'
+  createError: '[tickets] createError',
+  marketingError: '[tickets] marketingError'
 }
 
 // После загрузки полной карточки подменяем краткие поля в «Мои» / «Ответственные» без второго запроса списка.
@@ -167,9 +200,15 @@ const getters = {
   [getterTypes.isChangingStatus]: (localState) => localState.isChangingStatus,
   [getterTypes.isChangingResponsible]: (localState) => localState.isChangingResponsible,
   [getterTypes.isSubmittingTicketRating]: (localState) => localState.isSubmittingTicketRating,
+  [getterTypes.isLoadingMarketingServices]: (localState) => localState.isLoadingMarketingServices,
+  [getterTypes.isLoadingMarketingSubdivisions]: (localState) => localState.isLoadingMarketingSubdivisions,
+  [getterTypes.isCreatingMarketingRequest]: (localState) => localState.isCreatingMarketingRequest,
+  [getterTypes.marketingServices]: (localState) => localState.marketingServices,
+  [getterTypes.marketingSubdivisions]: (localState) => localState.marketingSubdivisions,
   [getterTypes.listError]: (localState) => localState.listError,
   [getterTypes.ticketError]: (localState) => localState.ticketError,
-  [getterTypes.createError]: (localState) => localState.createError
+  [getterTypes.createError]: (localState) => localState.createError,
+  [getterTypes.marketingError]: (localState) => localState.marketingError
 }
 
 const mutations = {
@@ -305,6 +344,48 @@ const mutations = {
   [mutationTypes.confirmTicketFail](localState, errors) {
     localState.isSubmittingTicketRating = false
     localState.ticketError = errors
+  },
+
+  [mutationTypes.loadMarketingServicesStart](localState) {
+    localState.isLoadingMarketingServices = true
+    localState.marketingError = []
+  },
+  [mutationTypes.loadMarketingServicesSuccess](localState, services) {
+    localState.isLoadingMarketingServices = false
+    localState.marketingServices = services
+  },
+  [mutationTypes.loadMarketingServicesFail](localState, errors) {
+    localState.isLoadingMarketingServices = false
+    localState.marketingServices = []
+    localState.marketingError = errors
+  },
+
+  [mutationTypes.loadMarketingSubdivisionsStart](localState) {
+    localState.isLoadingMarketingSubdivisions = true
+    localState.marketingError = []
+  },
+  [mutationTypes.loadMarketingSubdivisionsSuccess](localState, subdivisions) {
+    localState.isLoadingMarketingSubdivisions = false
+    localState.marketingSubdivisions = subdivisions
+  },
+  [mutationTypes.loadMarketingSubdivisionsFail](localState, errors) {
+    localState.isLoadingMarketingSubdivisions = false
+    localState.marketingSubdivisions = []
+    localState.marketingError = errors
+  },
+
+  [mutationTypes.createMarketingRequestStart](localState) {
+    localState.isCreatingMarketingRequest = true
+    localState.marketingError = []
+  },
+  [mutationTypes.createMarketingRequestSuccess](localState, ticket) {
+    localState.isCreatingMarketingRequest = false
+    localState.selectedTicket = ticket
+    localState.myTickets = prependTicketSummary(localState.myTickets, ticket)
+  },
+  [mutationTypes.createMarketingRequestFail](localState, errors) {
+    localState.isCreatingMarketingRequest = false
+    localState.marketingError = errors
   }
 }
 
@@ -465,6 +546,54 @@ const actions = {
         })
         .catch((error) => {
           context.commit(mutationTypes.confirmTicketFail, [normalizeTicketError(error)])
+          resolve(error)
+        })
+    })
+  },
+
+  [actionTypes.loadMarketingServices](context) {
+    return new Promise((resolve) => {
+      context.commit(mutationTypes.loadMarketingServicesStart)
+
+      ticketsApi.listMarketingServices()
+        .then((response) => {
+          context.commit(mutationTypes.loadMarketingServicesSuccess, response?.data?.data || [])
+          resolve(response)
+        })
+        .catch((error) => {
+          context.commit(mutationTypes.loadMarketingServicesFail, [normalizeTicketError(error)])
+          resolve(error)
+        })
+    })
+  },
+
+  [actionTypes.loadMarketingSubdivisions](context) {
+    return new Promise((resolve) => {
+      context.commit(mutationTypes.loadMarketingSubdivisionsStart)
+
+      ticketsApi.listMarketingSubdivisions()
+        .then((response) => {
+          context.commit(mutationTypes.loadMarketingSubdivisionsSuccess, response?.data?.data || [])
+          resolve(response)
+        })
+        .catch((error) => {
+          context.commit(mutationTypes.loadMarketingSubdivisionsFail, [normalizeTicketError(error)])
+          resolve(error)
+        })
+    })
+  },
+
+  [actionTypes.createMarketingRequest](context, payload) {
+    return new Promise((resolve) => {
+      context.commit(mutationTypes.createMarketingRequestStart)
+
+      ticketsApi.createMarketingRequest(payload)
+        .then((response) => {
+          context.commit(mutationTypes.createMarketingRequestSuccess, response?.data?.data || null)
+          resolve(response)
+        })
+        .catch((error) => {
+          context.commit(mutationTypes.createMarketingRequestFail, [normalizeTicketError(error)])
           resolve(error)
         })
     })

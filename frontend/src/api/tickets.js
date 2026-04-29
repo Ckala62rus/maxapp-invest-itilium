@@ -109,6 +109,40 @@ const confirmTicket = (number, payload) => {
   return axios.post(urls.ticketConfirm(number), payload)
 }
 
+/** Маркетинговые типы из 1С: code/name/formNumber/formSchema. */
+const listMarketingServices = () => {
+  return axios.get(urls.marketingServices)
+}
+
+/** Подразделения маркетинга из 1С для шага 2. */
+const listMarketingSubdivisions = () => {
+  return axios.get(urls.marketingSubdivisions)
+}
+
+/** Создать маркетинговую заявку (wizard 4 шага + динамические поля шага 4). */
+const createMarketingRequest = (payload) => {
+  const { attachmentFiles, ...fields } = payload
+  const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+
+  if (files.length === 0) {
+    return axios.post(urls.marketingRequests, fields)
+  }
+
+  const formData = new FormData()
+  formData.append(
+    'payload',
+    JSON.stringify({
+      ...fields,
+      attachments: []
+    })
+  )
+  files.forEach((file) => {
+    formData.append('attachments', file)
+  })
+
+  return axios.post(urls.marketingRequests, formData)
+}
+
 export default {
   listMyTickets,
   createTicket,
@@ -119,5 +153,8 @@ export default {
   changeStatus,
   listResponsibleOptions,
   changeResponsible,
-  confirmTicket
+  confirmTicket,
+  listMarketingServices,
+  listMarketingSubdivisions,
+  createMarketingRequest
 }

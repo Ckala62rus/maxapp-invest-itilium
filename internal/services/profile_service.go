@@ -167,11 +167,29 @@ func profileFromLookup(userID string, lookup models.EmployeeLookupResult) (model
 		Organization:              organization,
 		Position:                  position,
 		ServiceCalls:              lookup.ServiceCalls,
-		CanCreateMarketingRequests: lookup.CanCreateMarketingRequests,
-		CanCreateDaxRequests:      lookup.CanCreateDaxRequests,
+		CanCreateMarketingRequests: marketingFlagFromLookup(lookup),
+		CanCreateDaxRequests:      daxFlagFromLookup(lookup),
 		EmployeeFound:             true,
 		RegistrationRequired:      false,
 	}, true
+}
+
+// marketingFlagFromLookup prefers normalized ITILIUM fields, then re-parses Raw with the same rules as the HTTP client.
+func marketingFlagFromLookup(lookup models.EmployeeLookupResult) bool {
+	if lookup.CanCreateMarketingRequests {
+		return true
+	}
+
+	return api.MarketingPermissionFromFindEmployeePayload(lookup.Raw)
+}
+
+// daxFlagFromLookup prefers normalized ITILIUM fields, then re-parses Raw for alternate DAX keys.
+func daxFlagFromLookup(lookup models.EmployeeLookupResult) bool {
+	if lookup.CanCreateDaxRequests {
+		return true
+	}
+
+	return api.DaxPermissionFromFindEmployeePayload(lookup.Raw)
 }
 
 // fallbackProfile keeps the mini app usable when ITILIUM does not know the current user yet.

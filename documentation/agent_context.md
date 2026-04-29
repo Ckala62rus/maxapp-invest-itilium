@@ -32,6 +32,9 @@
 - `GET /api/v1/tickets/{number}` and `POST /api/v1/tickets/search` are backed by `GET /find_sc` and map `creationDate`, `deadlineDate`, `responsibleEmployeeTitle`, `change_status`, `change_responsible`, `new_state`.
 - `POST /api/v1/tickets/{number}/comments` now calls `POST /add_comment` (`multipart/form-data`, without `telegram`) and re-reads the card through `find_sc`.
 - `GET /api/v1/tickets/{number}/responsibles` now calls `POST /responsibles_sc` (`multipart/form-data`) because GET returns `405` in the current 1C environment.
+- Marketing request flow is now scaffolded end-to-end: backend routes `GET /api/v1/marketing/services`, `GET /api/v1/marketing/subdivisions`, `POST /api/v1/marketing/requests`, dynamic schema models (`formNumber` + `fields`), and Vue wizard step-4 renderer driven by backend schema.
+- `find_employee` marketing/DAX flags are parsed with tolerance for alternate 1C key names (PascalCase, Russian labels, nested `data`/`employee`, string `Истина`/`Ложь`, numeric 1/0) via `internal/api/find_employee_permissions.go`, so `GET /api/v1/users/me` can expose `canCreateMarketingRequests` even when the raw JSON key differs from the English camelCase name.
+- ITILIUM client now includes legacy marketing endpoints `listServicesMarketing`, `listSubdivisionMarketing`, `create_sc_Marketing` with resilient response parsing and demo-mode fallback schemas aligned with the latest marketing PDF. Marketing reference endpoints use `GET` with `id` in query (`POST` returns 405 on the current 1C publication); `listServicesMarketing` returns `КомпонентаУслуги` + `НомерФормы`, while `listSubdivisionMarketing` currently returns `[]` for user `40367639`. `create_sc_Marketing` sends multipart fields using the confirmed 1C names: `id`, `Services`, `Subdivision`, `ExecutionDate`, optional `files`, plus service-specific fields (`LayoutName`, `Size`, `ForWhat`, `RequiredText`, `LayoutFormats`, `ThemeEvent`, `Description`, `Budget`, `LinkToFoto`, `LinkToExamples`).
 
 ## Important Decisions
 
@@ -57,6 +60,7 @@
 - After bot moderation finishes, set `MAX_BOT_TOKEN`, open the mini app through the real MAX bot, and verify `POST /api/v1/auth/max/validate` with live `window.WebApp.initData`.
 - Repeat the live check with a known registered employee id to confirm the success payload field names for `profileFromLookup(...)`.
 - Compare the live request with the legacy aiogram implementation as soon as the reference code becomes available in the workspace or outside it.
+- Capture real 1C payload keys for marketing services/forms (especially exact `formNumber` key names and create_sc_Marketing field naming), then tighten parsers by removing current compatibility aliases.
 - If the live payload field names differ, update `profileFromLookup(...)` mapping in `internal/services/profile_service.go`.
 - If the MAX production flow works, remove the last dev fallback dependency on `X-User-ID` by switching `auth.allow_debug_identity_headers` off outside local debugging.
 - Submit a live registration request and inspect backend logs for the exact upstream status and response body from `POST /registration`.

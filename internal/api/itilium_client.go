@@ -93,7 +93,7 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 	form.Set("id", strings.TrimSpace(userID))
 	form.Set("sc_number", strings.Join(numbers, ";"))
 
-	payload, err := c.doFormPostBytes(ctx, "/list_sc", form)
+	payload, err := c.doMultipartFormPostBytes(ctx, "/list_sc", form)
 	if err != nil {
 		c.logger.Warn(
 			"list_sc failed, returning my tickets from servicecalls only",
@@ -232,14 +232,23 @@ func (c *Client) FindEmployeeByIdentifier(ctx context.Context, request models.Em
 		return models.EmployeeLookupResult{}, err
 	}
 
-	// Остальные поля остаются в Raw для гибкого маппинга на сервисе.
+	// Флаги прав: имена ключей различаются по контурам 1С (латиница/PascalCase/русские имена обёрток).
+	marketing := MarketingPermissionFromFindEmployeePayload(payload)
+	if !marketing {
+		marketing = boolFromAny(firstAny(payload, "canCreateMarketingRequests", "canCreateMarketing", "can_marketing"))
+	}
+	dax := DaxPermissionFromFindEmployeePayload(payload)
+	if !dax {
+		dax = boolFromAny(firstAny(payload, "canCreateDaxRequests", "canCreateDax", "can_dax"))
+	}
+
 	return models.EmployeeLookupResult{
 		Identifier:                 request.Identifier,
 		AttributeCode:              attributeCode,
 		UUID:                       stringFromAny(payload["UUID"]),
 		ServiceCalls:               stringSliceFromAny(payload["servicecalls"]),
-		CanCreateMarketingRequests: boolFromAny(payload["canCreateMarketingRequests"]),
-		CanCreateDaxRequests:       boolFromAny(payload["canCreateDaxRequests"]),
+		CanCreateMarketingRequests: marketing,
+		CanCreateDaxRequests:       dax,
 		Raw:                        payload,
 	}, nil
 }
@@ -323,6 +332,10 @@ func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]m
 }
 
 func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
+	return c.doMultipartFormPostBytesWithFiles(ctx, path, form, nil)
+}
+
+func (c *Client) doMultipartFormPostBytesWithFiles(ctx context.Context, path string, form url.Values, files []models.FileAttachment) ([]byte, error) {
 	if c.baseURL == "" {
 		return nil, errors.New("itilium base url is required")
 	}
@@ -339,6 +352,15 @@ func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form
 			if err := writer.WriteField(key, value); err != nil {
 				return nil, fmt.Errorf("write multipart field %q: %w", key, err)
 			}
+		}
+	}
+	for _, fa := range files {
+		part, err := writer.CreateFormFile("files", fa.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := part.Write(fa.Data); err != nil {
+			return nil, fmt.Errorf("write form file: %w", err)
 		}
 	}
 	if err := writer.Close(); err != nil {
@@ -383,6 +405,7 @@ func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"form_fields", truncateLogString(form.Encode(), 12000),
+		"files", multipartFileLogMeta(files),
 		"response_body", truncateLogString(respText, 8000),
 		"request_id", middleware.RequestIDFromContext(ctx),
 		"user_id", middleware.UserIDFromContext(ctx),
@@ -394,6 +417,7 @@ func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"form_fields", form.Encode(),
+		"files", multipartFileLogMeta(files),
 		"response_body", respText,
 		"request_id", middleware.RequestIDFromContext(ctx),
 		"user_id", middleware.UserIDFromContext(ctx),
@@ -404,6 +428,14 @@ func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form
 	}
 
 	return payload, nil
+}
+
+func multipartFileLogMeta(files []models.FileAttachment) []string {
+	out := make([]string, 0, len(files))
+	for _, fa := range files {
+		out = append(out, fmt.Sprintf("%s:%dB", fa.Filename, len(fa.Data)))
+	}
+	return out
 }
 
 // doPostEmptyQuery выполняет POST без тела: legacy confirm_sc и fallback responsibles_sc с параметрами в query.
@@ -560,8 +592,13 @@ func (c *Client) GetTicket(ctx context.Context, userID string, number string) (m
 		"sc_number": strings.TrimSpace(number),
 	}
 
-	var payload map[string]any
-	if err := c.doJSON(ctx, http.MethodGet, "/find_sc", query, nil, &payload); err != nil {
+	raw, err := c.doJSONRequestPayload(ctx, http.MethodGet, "/find_sc", query, nil)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+
+	payload, err := unmarshalItiliumObjectOrStringError(raw)
+	if err != nil {
 		return models.TicketDetail{}, err
 	}
 
@@ -579,25 +616,111 @@ func (c *Client) GetTicket(ctx context.Context, userID string, number string) (m
 // pathCreateSC — HTTP-сервис 1С «создать заявку» (согласовано: id, shortDescription, description, files).
 const pathCreateSC = "/create_sc"
 
+// pathCreateSCMarketing — legacy endpoint for marketing requests with dynamic form number.
+const pathCreateSCMarketing = "/create_sc_Marketing"
+
 // CreateTicket sends a create request to ITILIUM.
 func (c *Client) CreateTicket(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
-	if len(request.FileAttachments) == 0 {
-		// Без файлов — классическая форма application/x-www-form-urlencoded.
-		form := url.Values{}
-		form.Set("id", strings.TrimSpace(request.UserID))
-		form.Set("shortDescription", strings.TrimSpace(request.Title))
-		form.Set("description", buildCreateSCLongDescription(request))
+	// Всегда multipart/form-data (поля + опционально files). Urlencoded на этом HTTP-сервисе 1С ломает разбор запроса.
+	return c.doCreateSCMultipart(ctx, request)
+}
 
-		payload, err := c.doFormPostBytes(ctx, pathCreateSC, form)
-		if err != nil {
-			return models.TicketDetail{}, err
-		}
+// ListMarketingServices returns available marketing request types and normalized dynamic form schemas.
+func (c *Client) ListMarketingServices(ctx context.Context, userID string) ([]models.MarketingServiceType, error) {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(userID))
 
-		return parseCreateSCResponse(payload, request)
+	payload, err := c.doFormGetBytes(ctx, "/listServicesMarketing", form)
+	if err != nil {
+		return nil, err
 	}
 
-	// С вложениями — multipart: те же поля + повторяющиеся части files (как в 1С).
-	return c.doCreateSCMultipart(ctx, request)
+	services, err := parseMarketingServicesResponse(payload)
+	if err != nil {
+		return nil, err
+	}
+	for idx := range services {
+		if strings.TrimSpace(services[idx].FormSchema.FormNumber) == "" {
+			services[idx].FormSchema.FormNumber = services[idx].FormNumber
+		}
+		if len(services[idx].FormSchema.Fields) == 0 {
+			services[idx].FormSchema = defaultMarketingFormSchema(services[idx].FormNumber, services[idx].Name)
+		}
+	}
+
+	return services, nil
+}
+
+// ListMarketingSubdivisions returns available subdivision options for marketing requests.
+func (c *Client) ListMarketingSubdivisions(ctx context.Context, userID string) ([]models.MarketingSubdivision, error) {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(userID))
+
+	payload, err := c.doFormGetBytes(ctx, "/listSubdivisionMarketing", form)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseMarketingSubdivisionsResponse(payload)
+}
+
+// CreateMarketingRequest sends dynamic-form marketing payload to legacy create_sc_Marketing endpoint.
+func (c *Client) CreateMarketingRequest(ctx context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error) {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(request.UserID))
+	form.Set("Services", strings.TrimSpace(request.ServiceCode))
+	form.Set("Subdivision", strings.TrimSpace(request.Subdivision))
+	form.Set("ExecutionDate", strings.TrimSpace(request.ExecutionDate))
+	for key, value := range request.FormData {
+		normalizedKey := marketingCreateSCFieldName(key)
+		if normalizedKey == "" {
+			continue
+		}
+		form.Set(normalizedKey, strings.TrimSpace(value))
+	}
+
+	payload, err := c.doMultipartFormPostBytesWithFiles(ctx, pathCreateSCMarketing, form, request.FileAttachments)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+
+	// По поведению legacy-методов ответ может быть пустым или частичным JSON — используем общий parser + fallback.
+	createFallback := models.CreateTicketRequest{
+		UserID:        request.UserID,
+		RequestType:   request.ServiceCode,
+		Title:         "Маркетинговая заявка",
+		Description:   buildMarketingDescription(request),
+		Department:    request.Subdivision,
+		ExecutionDate: request.ExecutionDate,
+	}
+	return parseCreateSCResponse(payload, createFallback)
+}
+
+func marketingCreateSCFieldName(key string) string {
+	switch strings.TrimSpace(key) {
+	case "LayoutName", "layoutName":
+		return "LayoutName"
+	case "Size", "size":
+		return "Size"
+	case "ForWhat", "purpose", "forWhat":
+		return "ForWhat"
+	case "RequiredText", "requiredText":
+		return "RequiredText"
+	case "LayoutFormats", "layoutFormat", "layoutFormats":
+		return "LayoutFormats"
+	case "ThemeEvent", "eventTheme":
+		return "ThemeEvent"
+	case "Description", "eventDescription", "details":
+		return "Description"
+	case "Budget", "budget":
+		return "Budget"
+	case "LinkToFoto", "photoLinks", "photoLink":
+		return "LinkToFoto"
+	case "LinkToExamples", "referenceLinks", "referenceLink":
+		return "LinkToExamples"
+	default:
+		return strings.TrimSpace(key)
+	}
 }
 
 func buildCreateSCLongDescription(req models.CreateTicketRequest) string {
@@ -652,12 +775,12 @@ func parseCreateSCResponse(payload []byte, req models.CreateTicketRequest) (mode
 	}
 
 	detail = models.TicketDetail{
-		Number:            pickStringFromMap(m, "number", "Number", "sc", "Номер", "ServiceCallNumber"),
-		Title:             pickStringFromMap(m, "title", "Title", "shortDescription", "ShortDescription"),
-		Description:       pickStringFromMap(m, "description", "Description"),
-		State:             pickStringFromMap(m, "state", "State", "status", "Status"),
-		Deadline:          pickStringFromMap(m, "deadline", "Deadline", "executionDate"),
-		ResponsibleTeam:   pickStringFromMap(m, "responsibleTeam", "ResponsibleTeam", "OU", "client"),
+		Number:               pickStringFromMap(m, "number", "Number", "sc", "Номер", "ServiceCallNumber"),
+		Title:                pickStringFromMap(m, "title", "Title", "shortDescription", "ShortDescription"),
+		Description:          pickStringFromMap(m, "description", "Description"),
+		State:                pickStringFromMap(m, "state", "State", "status", "Status"),
+		Deadline:             pickStringFromMap(m, "deadline", "Deadline", "executionDate"),
+		ResponsibleTeam:      pickStringFromMap(m, "responsibleTeam", "ResponsibleTeam", "OU", "client"),
 		CanChangeResponsible: boolFromAny(m["canChangeResponsible"]),
 	}
 	if detail.Title == "" {
@@ -673,6 +796,161 @@ func parseCreateSCResponse(payload []byte, req models.CreateTicketRequest) (mode
 		detail.Deadline = req.ExecutionDate
 	}
 	return detail, nil
+}
+
+func parseMarketingServicesResponse(payload []byte) ([]models.MarketingServiceType, error) {
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	if len(strings.TrimSpace(string(clean))) == 0 {
+		return []models.MarketingServiceType{}, nil
+	}
+
+	var list []map[string]any
+	if err := json.Unmarshal(clean, &list); err == nil {
+		return mapMarketingServices(list), nil
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(clean, &envelope); err != nil {
+		return nil, fmt.Errorf("decode listServicesMarketing response: %w", err)
+	}
+
+	for _, key := range []string{"data", "items", "result", "services"} {
+		raw, ok := envelope[key]
+		if !ok {
+			continue
+		}
+		items, ok := raw.([]any)
+		if !ok {
+			continue
+		}
+		normalized := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			if m, castOK := item.(map[string]any); castOK {
+				normalized = append(normalized, m)
+			}
+		}
+		return mapMarketingServices(normalized), nil
+	}
+
+	return []models.MarketingServiceType{}, nil
+}
+
+func mapMarketingServices(items []map[string]any) []models.MarketingServiceType {
+	out := make([]models.MarketingServiceType, 0, len(items))
+	for _, item := range items {
+		code := pickStringFromMap(item, "code", "serviceCode", "service", "Services", "Service", "КомпонентаУслуги", "Услуга", "id", "key")
+		name := pickStringFromMap(item, "name", "title", "serviceName", "Services", "Service", "КомпонентаУслуги", "Услуга", "label")
+		formNumber := pickStringFromMap(item, "formNumber", "FormNumber", "form_number", "form", "numberForm", "NumberForm", "НомерФормы")
+		if code == "" && name == "" {
+			continue
+		}
+		if code == "" {
+			code = name
+		}
+		if name == "" {
+			name = code
+		}
+		schema := defaultMarketingFormSchema(formNumber, name)
+		out = append(out, models.MarketingServiceType{
+			Code:       strings.TrimSpace(code),
+			Name:       strings.TrimSpace(name),
+			FormNumber: strings.TrimSpace(formNumber),
+			FormSchema: schema,
+		})
+	}
+	return out
+}
+
+func parseMarketingSubdivisionsResponse(payload []byte) ([]models.MarketingSubdivision, error) {
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	if len(strings.TrimSpace(string(clean))) == 0 {
+		return []models.MarketingSubdivision{}, nil
+	}
+
+	var names []string
+	if err := json.Unmarshal(clean, &names); err == nil {
+		result := make([]models.MarketingSubdivision, 0, len(names))
+		for _, name := range names {
+			trimmed := strings.TrimSpace(name)
+			if trimmed == "" {
+				continue
+			}
+			result = append(result, models.MarketingSubdivision{Name: trimmed})
+		}
+		return result, nil
+	}
+
+	var list []map[string]any
+	if err := json.Unmarshal(clean, &list); err == nil {
+		result := make([]models.MarketingSubdivision, 0, len(list))
+		for _, item := range list {
+			name := pickStringFromMap(item, "name", "title", "subdivision", "Subdivision")
+			if name == "" {
+				continue
+			}
+			result = append(result, models.MarketingSubdivision{
+				Code: pickStringFromMap(item, "code", "id", "subdivisionCode"),
+				Name: name,
+			})
+		}
+		return result, nil
+	}
+
+	return nil, fmt.Errorf("decode listSubdivisionMarketing response: unsupported format")
+}
+
+func buildMarketingDescription(req models.CreateMarketingRequest) string {
+	var b strings.Builder
+	b.WriteString("Маркетинговая заявка")
+	b.WriteString("\nТип: ")
+	b.WriteString(strings.TrimSpace(req.ServiceCode))
+	b.WriteString("\nПодразделение: ")
+	b.WriteString(strings.TrimSpace(req.Subdivision))
+	if strings.TrimSpace(req.ExecutionDate) != "" {
+		b.WriteString("\nИсполнить до: ")
+		b.WriteString(strings.TrimSpace(req.ExecutionDate))
+	} else if req.WithoutDate {
+		b.WriteString("\nИсполнить до: без даты")
+	}
+	for key, value := range req.FormData {
+		b.WriteString("\n")
+		b.WriteString(strings.TrimSpace(key))
+		b.WriteString(": ")
+		b.WriteString(strings.TrimSpace(value))
+	}
+	return b.String()
+}
+
+func defaultMarketingFormSchema(formNumber string, serviceName string) models.MarketingFormSchema {
+	schema := models.MarketingFormSchema{
+		FormNumber: strings.TrimSpace(formNumber),
+		Title:      strings.TrimSpace(serviceName),
+	}
+	switch strings.ToLower(strings.TrimSpace(serviceName)) {
+	case "дизайн":
+		schema.Fields = []models.MarketingFormField{
+			{Key: "LayoutName", Label: "Название макета", Type: "text", Required: true},
+			{Key: "Size", Label: "Размеры", Type: "text", Required: true},
+			{Key: "ForWhat", Label: "Для чего", Type: "text", Required: true},
+			{Key: "RequiredText", Label: "Обязательный текст", Type: "textarea", Required: true},
+			{Key: "LayoutFormats", Label: "Форматы предоставления макета", Type: "text", Required: true},
+			{Key: "LinkToFoto", Label: "Ссылка на фото", Type: "text", Required: false},
+			{Key: "LinkToExamples", Label: "Ссылка на примеры", Type: "text", Required: false},
+		}
+	case "мероприятие":
+		schema.Fields = []models.MarketingFormField{
+			{Key: "ThemeEvent", Label: "Тема мероприятия", Type: "text", Required: true},
+			{Key: "Description", Label: "Описание", Type: "textarea", Required: true},
+			{Key: "Budget", Label: "Бюджет", Type: "text", Required: true},
+			{Key: "LinkToFoto", Label: "Ссылка на фото", Type: "text", Required: false},
+			{Key: "LinkToExamples", Label: "Ссылка на примеры", Type: "text", Required: false},
+		}
+	default:
+		schema.Fields = []models.MarketingFormField{
+			{Key: "Description", Label: "Описание", Type: "textarea", Required: true},
+		}
+	}
+	return schema
 }
 
 func ticketDetailCreateSCFallback(req models.CreateTicketRequest) models.TicketDetail {
@@ -1022,10 +1300,12 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 	return detail, nil
 }
 
-// ConfirmTicket sends user rating via legacy confirm_sc (POST, query: telegram, incident, mark, optional comment_text).
+// ConfirmTicket sends user rating via legacy confirm_sc (POST, query: id, telegram, incident, mark, optional comment_text).
 func (c *Client) ConfirmTicket(ctx context.Context, number string, request models.ConfirmTicketRequest) (models.TicketDetail, error) {
+	uid := strings.TrimSpace(request.UserID)
 	q := url.Values{}
-	q.Set("telegram", strings.TrimSpace(request.UserID))
+	q.Set("id", uid)
+	q.Set("telegram", uid)
 	q.Set("incident", strings.TrimSpace(number))
 	q.Set("mark", strconv.Itoa(request.Mark))
 	if comment := strings.TrimSpace(request.Comment); comment != "" {
@@ -1135,16 +1415,17 @@ func (c *Client) ListResponsibleOptions(ctx context.Context, userID string, numb
 	return parseResponsiblesScResponse(payloadRaw)
 }
 
-// doJSON performs a JSON request and logs request and response metadata for troubleshooting.
-func (c *Client) doJSON(ctx context.Context, method string, path string, query map[string]string, requestBody any, responseBody any) error {
+// doJSONRequestPayload performs the same HTTP exchange as doJSON and returns the response body
+// (after 2xx/3xx; 4xx/5xx return HTTPStatusError and no payload is unmarshaled by callers that need a body on success).
+func (c *Client) doJSONRequestPayload(ctx context.Context, method string, path string, query map[string]string, requestBody any) ([]byte, error) {
 	if c.baseURL == "" {
-		return errors.New("itilium base url is required")
+		return nil, errors.New("itilium base url is required")
 	}
 
 	// baseURL уже без завершающего слэша; path начинается с /…
 	endpoint, err := url.Parse(c.baseURL + path)
 	if err != nil {
-		return fmt.Errorf("parse itilium url: %w", err)
+		return nil, fmt.Errorf("parse itilium url: %w", err)
 	}
 
 	values := endpoint.Query()
@@ -1154,18 +1435,18 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 	endpoint.RawQuery = values.Encode()
 
 	var body io.Reader
-	var raw []byte
+	var requestRaw []byte
 	if requestBody != nil {
-		raw, err = json.Marshal(requestBody)
+		requestRaw, err = json.Marshal(requestBody)
 		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
+			return nil, fmt.Errorf("marshal request: %w", err)
 		}
-		body = bytes.NewBuffer(raw)
+		body = bytes.NewBuffer(requestRaw)
 	}
 
 	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	request.Header.Set("Content-Type", "application/json")
@@ -1185,13 +1466,13 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 			"request_id", middleware.RequestIDFromContext(ctx),
 			"user_id", middleware.UserIDFromContext(ctx),
 		)
-		return fmt.Errorf("perform request: %w", err)
+		return nil, fmt.Errorf("perform request: %w", err)
 	}
 	defer response.Body.Close()
 
 	payload, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	c.logger.Info(
@@ -1209,7 +1490,7 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 		"url", endpoint.String(),
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
-		"request_body", string(raw),
+		"request_body", string(requestRaw),
 		"response_body", string(payload),
 		"request_id", middleware.RequestIDFromContext(ctx),
 		"user_id", middleware.UserIDFromContext(ctx),
@@ -1217,7 +1498,40 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 
 	// 4xx/5xx отдаём сервису как HTTPStatusError — там решается UI (регистрация, ожидание и т.д.).
 	if response.StatusCode >= 400 {
-		return HTTPStatusError{StatusCode: response.StatusCode}
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
+// unmarshalItiliumObjectOrStringError decodes 1С JSON: либо объект карточки, либо JSON-строка с сообщением
+// (например "Заявка с таким номером не найдена" при HTTP 200).
+func unmarshalItiliumObjectOrStringError(payload []byte) (map[string]any, error) {
+	if len(bytes.TrimSpace(payload)) == 0 {
+		return nil, nil
+	}
+	var v any
+	if err := json.Unmarshal(payload, &v); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	if v == nil {
+		return nil, nil
+	}
+	if s, ok := v.(string); ok {
+		return nil, errors.New(s)
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("decode response: expected object or string, got %T", v)
+	}
+	return m, nil
+}
+
+// doJSON performs a JSON request and logs request and response metadata for troubleshooting.
+func (c *Client) doJSON(ctx context.Context, method string, path string, query map[string]string, requestBody any, responseBody any) error {
+	payload, err := c.doJSONRequestPayload(ctx, method, path, query, requestBody)
+	if err != nil {
+		return err
 	}
 
 	if responseBody == nil || len(payload) == 0 {
@@ -1231,7 +1545,7 @@ func (c *Client) doJSON(ctx context.Context, method string, path string, query m
 	return nil
 }
 
-// doFormPostBytes выполняет POST с телом application/x-www-form-urlencoded и возвращает сырое тело ответа (для create_sc и нестандартного JSON).
+// doFormPostBytes выполняет POST с телом application/x-www-form-urlencoded и возвращает сырое тело ответа.
 func (c *Client) doFormPostBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
 	if c.baseURL == "" {
 		return nil, errors.New("itilium base url is required")
@@ -1284,6 +1598,87 @@ func (c *Client) doFormPostBytes(ctx context.Context, path string, form url.Valu
 		"status_code", response.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"form_body", encodedForm,
+		"response_body", respText,
+	)
+
+	if response.StatusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
+// doFormPostWithGet405FallbackBytes отправляет POST как в legacy-контрактах; если 1С публикует только GET
+// (типичная ситуация: 405 Method Not Allowed), повторяет с теми же полями в query-string.
+func (c *Client) doFormPostWithGet405FallbackBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
+	payload, err := c.doFormPostBytes(ctx, path, form)
+	if err == nil {
+		return payload, nil
+	}
+	var hs HTTPStatusError
+	if errors.As(err, &hs) && hs.StatusCode == http.StatusMethodNotAllowed {
+		c.logger.Info(
+			"itilium POST returned 405 on form endpoint, retrying GET with same fields as query",
+			"path", path,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return c.doFormGetBytes(ctx, path, form)
+	}
+	return nil, err
+}
+
+// doFormGetBytes — GET с параметрами формы в query (идентичные имена полей, что и в urlencoded теле POST).
+func (c *Client) doFormGetBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
+	if c.baseURL == "" {
+		return nil, errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse itilium url: %w", err)
+	}
+	endpoint.RawQuery = form.Encode()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error("itilium form GET request failed", "method", http.MethodGet, "url", endpoint.String(), "duration_ms", time.Since(start).Milliseconds(), "error", err)
+		return nil, fmt.Errorf("perform form GET request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(payload), "\ufeff")
+	c.logger.Info(
+		"itilium form GET request completed",
+		"method", http.MethodGet,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"query_string", truncateLogString(form.Encode(), 12000),
+		"response_body", truncateLogString(respText, 8000),
+	)
+	c.logger.Debug(
+		"itilium form GET request details",
+		"method", http.MethodGet,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"query", form.Encode(),
 		"response_body", respText,
 	)
 
@@ -1504,6 +1899,41 @@ func (c *DemoClient) ListResponsibleOptions(_ context.Context, _ string, _ strin
 		{Team: "Отдел ИТ", Person: "Иван Петров", Role: "Старший инженер", ExternalID: "emp-1"},
 		{Team: "Отдел ИТ", Person: "Елена Орлова", Role: "Системный аналитик", ExternalID: "emp-2"},
 		{Team: "Маркетинг", Person: "Мария Соколова", Role: "Маркетолог", ExternalID: "emp-3"},
+	}, nil
+}
+
+// ListMarketingServices returns deterministic marketing types with dynamic form schemas.
+func (c *DemoClient) ListMarketingServices(_ context.Context, _ string) ([]models.MarketingServiceType, error) {
+	return []models.MarketingServiceType{
+		{Code: "design", Name: "Дизайн", FormNumber: "1", FormSchema: defaultMarketingFormSchema("1", "Дизайн")},
+		{Code: "event", Name: "Мероприятие", FormNumber: "2", FormSchema: defaultMarketingFormSchema("2", "Мероприятие")},
+		{Code: "ads", Name: "Реклама", FormNumber: "3", FormSchema: defaultMarketingFormSchema("3", "Реклама")},
+		{Code: "smm", Name: "SMM", FormNumber: "4", FormSchema: defaultMarketingFormSchema("4", "SMM")},
+		{Code: "promo", Name: "Акция", FormNumber: "5", FormSchema: defaultMarketingFormSchema("5", "Акция")},
+		{Code: "other", Name: "Иное", FormNumber: "6", FormSchema: defaultMarketingFormSchema("6", "Иное")},
+	}, nil
+}
+
+// ListMarketingSubdivisions returns deterministic marketing subdivisions for demo mode.
+func (c *DemoClient) ListMarketingSubdivisions(_ context.Context, _ string) ([]models.MarketingSubdivision, error) {
+	return []models.MarketingSubdivision{
+		{Name: "БП – Барская Пивница"},
+		{Name: "ИВ – Иван Васильевич"},
+		{Name: "ВС – Время Счастья"},
+		{Name: "СБ – супермаркет Барс"},
+	}, nil
+}
+
+// CreateMarketingRequest returns a synthetic ticket after dynamic marketing form submit.
+func (c *DemoClient) CreateMarketingRequest(_ context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error) {
+	return models.TicketDetail{
+		Number:               "SC-MKT-001",
+		Title:                "Маркетинговая заявка: " + request.ServiceCode,
+		Description:          buildMarketingDescription(request),
+		State:                "Зарегистрирована",
+		Deadline:             request.ExecutionDate,
+		ResponsibleTeam:      request.Subdivision,
+		CanChangeResponsible: true,
 	}, nil
 }
 

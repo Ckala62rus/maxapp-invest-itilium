@@ -232,6 +232,85 @@
 
 - созданная карточка заявки
 
+#### `GET /api/v1/marketing/services`
+
+Зачем:
+
+- получить типы маркетинговых заявок и номер формы шага 4
+
+Ответ:
+
+```json
+[
+  {
+    "code": "design",
+    "name": "Дизайн",
+    "formNumber": "1",
+    "formSchema": {
+      "formNumber": "1",
+      "title": "Дизайн",
+      "fields": [
+        {
+          "key": "layoutName",
+          "label": "Название макета",
+          "type": "text",
+          "required": true,
+          "options": []
+        }
+      ]
+    }
+  }
+]
+```
+
+Важно:
+
+- источник истины по типам и `formNumber` — только 1С
+- frontend не хардкодит типы маркетинга
+
+#### `GET /api/v1/marketing/subdivisions`
+
+Зачем:
+
+- получить список подразделений для шага 2
+
+Ответ:
+
+```json
+[
+  {
+    "code": "optional-string",
+    "name": "ИВ – Иван Васильевич"
+  }
+]
+```
+
+#### `POST /api/v1/marketing/requests`
+
+Зачем:
+
+- создать маркетинговую заявку по выбранному типу и динамической форме шага 4
+
+Тело запроса:
+
+```json
+{
+  "serviceCode": "design",
+  "formNumber": "1",
+  "subdivision": "ИВ – Иван Васильевич",
+  "executionDate": "2026-05-10",
+  "withoutDate": false,
+  "formData": {
+    "layoutName": "Баннер май",
+    "requiredText": "Текст для макета"
+  }
+}
+```
+
+Ответ:
+
+- созданная карточка заявки
+
 #### `GET /api/v1/tickets/{number}`
 
 Зачем:
@@ -351,9 +430,6 @@
 Пока еще не реализовано в текущем backend facade:
 
 - `vote_change`
-- `listServicesMarketing`
-- `listSubdivisionMarketing`
-- `create_sc_Marketing`
 
 ## Что важно для первого теста на реальном сервере
 
@@ -449,6 +525,40 @@
 ### `POST /create_sc`
 
 - Успех **`200`**: тело может содержать номер созданной заявки или обёртку — разбор в `parseCreateSCResponse`.
+
+### `GET /listServicesMarketing`
+
+- Входной параметр: `id` в query-string, например `/listServicesMarketing?id=40367639`.
+- Проверено на тестовом контуре 2026-04-29: `GET` возвращает **`200`**, а `POST` (`application/x-www-form-urlencoded` и `multipart/form-data`) возвращает **`405 Method Not Allowed`**.
+- Успешный ответ — JSON-массив услуг с номером формы. Реальный формат:
+
+```json
+[
+  { "КомпонентаУслуги": "SMM", "НомерФормы": 3 },
+  { "КомпонентаУслуги": "Акция", "НомерФормы": 3 },
+  { "КомпонентаУслуги": "Дизайн", "НомерФормы": 1 },
+  { "КомпонентаУслуги": "Иное", "НомерФормы": 3 },
+  { "КомпонентаУслуги": "Мероприятие", "НомерФормы": 2 },
+  { "КомпонентаУслуги": "Реклама", "НомерФормы": 3 }
+]
+```
+
+### `GET /listSubdivisionMarketing`
+
+- Входной параметр: `id` в query-string, например `/listSubdivisionMarketing?id=40367639`.
+- Проверено на тестовом контуре 2026-04-29: `GET` возвращает **`200`**, а `POST` (`application/x-www-form-urlencoded` и `multipart/form-data`) возвращает **`405 Method Not Allowed`**.
+- Успешный ответ — JSON-массив названий подразделений. Для пользователя `40367639` сейчас 1С вернула пустой массив:
+
+```json
+[]
+```
+
+### `POST /create_sc_Marketing`
+
+- Отправляется как `multipart/form-data`.
+- Общие обязательные/основные поля: `id`, `Services`, `Subdivision`, `ExecutionDate` (формат `ДД.ММ.ГГГГ`), опционально части `files`.
+- Для услуги `Дизайн` добавляются поля: `LayoutName`, `Size`, `ForWhat`, `RequiredText`, `LayoutFormats`, опционально `LinkToFoto`, `LinkToExamples`.
+- Для услуги `Мероприятие` добавляются поля: `ThemeEvent`, `Description`, `Budget`, опционально `LinkToFoto`, `LinkToExamples`.
 
 ---
 

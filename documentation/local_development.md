@@ -24,7 +24,9 @@
 4. **Проверка API**:
    ```bash
    curl http://127.0.0.1:3000/healthz
+   curl -i http://127.0.0.1:3000/api/v1/marketing/services
    ```
+   Второй вызов **без** `Authorization` / `X-User-ID` должен вернуть **`401 Unauthorized`**, но **не** `404`: если получаете **`404 Not Found`**, значит на `:3000` отвечает **старый процесс без новых маршрутов**. Перезапустите backend (например `docker compose -f docker-compose.dev.yml up -d --build backend-dev`) или пересоберите `go run`/`air`.
 
 ### Backend в Docker: единый dev-сервис с Delve (Air / GoLand)
 

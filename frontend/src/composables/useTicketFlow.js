@@ -51,17 +51,32 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     /** @type {File[]} */
     attachmentFiles: []
   })
+  // Динамические поля маркетинговой формы приходят из 1С по formNumber.
+  const marketingFormData = ref({})
+  const selectedMarketingService = ref(null)
   const createValidationErrors = ref({})
   const createValidationStarted = ref(false)
   const createSubmitError = ref('')
 
   const availableRequestTypes = computed(() => {
     const options = [defaultRequestType]
+    const canCreateMarketing = Boolean(
+      currentUser.value?.canCreateMarketingRequests ||
+      currentUser.value?.canCreateMarketing ||
+      currentUser.value?.can_marketing
+    )
+    const canCreateDax = Boolean(
+      currentUser.value?.canCreateDaxRequests ||
+      currentUser.value?.canCreateDax ||
+      currentUser.value?.can_dax
+    )
+    const hasMarketingServices = marketingServices.value.length > 0
 
-    if (currentUser.value?.canCreateMarketingRequests) {
+    // Если профильный флаг нестандартный, но 1С вернул маркетинговые типы — считаем маркетинг доступным.
+    if (canCreateMarketing || hasMarketingServices) {
       options.push('Маркетинговая заявка')
     }
-    if (currentUser.value?.canCreateDaxRequests) {
+    if (canCreateDax) {
       options.push('Заявка в DAX')
     }
 
@@ -116,6 +131,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const listErrors = computed(() => store.getters[ticketGetterTypes.listError] || [])
   const ticketErrors = computed(() => store.getters[ticketGetterTypes.ticketError] || [])
   const createErrors = computed(() => store.getters[ticketGetterTypes.createError] || [])
+  const marketingErrors = computed(() => store.getters[ticketGetterTypes.marketingError] || [])
+  const marketingServices = computed(() => store.getters[ticketGetterTypes.marketingServices] || [])
+  const marketingSubdivisions = computed(() => store.getters[ticketGetterTypes.marketingSubdivisions] || [])
+  const isLoadingMarketingServices = computed(() => store.getters[ticketGetterTypes.isLoadingMarketingServices])
+  const isLoadingMarketingSubdivisions = computed(() => store.getters[ticketGetterTypes.isLoadingMarketingSubdivisions])
+  const isCreatingMarketingRequest = computed(() => store.getters[ticketGetterTypes.isCreatingMarketingRequest])
   const createErrorMessage = computed(() => {
     if (createSubmitError.value) {
       return createSubmitError.value
@@ -123,6 +144,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
     return createErrors.value[0] || ''
   })
+  const marketingErrorMessage = computed(() => marketingErrors.value[0] || '')
+  const currentMarketingSchema = computed(() => selectedMarketingService.value?.formSchema || null)
 
   const normalizedMyTickets = computed(() => {
     const source = storeMyTickets.value.length ? storeMyTickets.value : ticketsFromServiceCalls.value
@@ -212,6 +235,32 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
   }, { immediate: true })
 
+  // При выборе маркетингового типа подгружаем справочники 1С и инициализируем шаги wizard.
+  watch(
+    () => createTicketForm.value.requestType,
+    async (requestType) => {
+      if (requestType !== 'Маркетинговая заявка') {
+        selectedMarketingService.value = null
+        marketingFormData.value = {}
+        return
+      }
+
+      await loadMarketingReferenceData()
+    },
+    { immediate: true }
+  )
+
+  watch(
+    () => activeScreen.value,
+    async (screen) => {
+      if (screen !== 'create') {
+        return
+      }
+      // Пробуем заранее подтянуть маркетинговые типы: это даёт признак доступа даже при нестандартных флагах профиля.
+      await store.dispatch(ticketActionTypes.loadMarketingServices)
+    }
+  )
+
   watch(
     () => [
       createTicketForm.value.requestType,
@@ -222,7 +271,11 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     ],
     () => {
       if (createValidationStarted.value) {
-        createValidationErrors.value = validateCreateTicketForm(createTicketForm.value)
+        createValidationErrors.value = validateCreateTicketForm(
+          createTicketForm.value,
+          selectedMarketingService.value,
+          marketingFormData.value
+        )
         if (Object.keys(createValidationErrors.value).length === 0) {
           createSubmitError.value = ''
         }
@@ -303,27 +356,70 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
   }
 
+  async function loadMarketingReferenceData() {
+    await Promise.all([
+      store.dispatch(ticketActionTypes.loadMarketingServices),
+      store.dispatch(ticketActionTypes.loadMarketingSubdivisions)
+    ])
+
+    if (!selectedMarketingService.value && marketingServices.value.length > 0) {
+      selectedMarketingService.value = marketingServices.value[0]
+    }
+    if (!createTicketForm.value.department && marketingSubdivisions.value.length > 0) {
+      createTicketForm.value.department = marketingSubdivisions.value[0]?.name || ''
+    }
+  }
+
+  function setMarketingService(serviceCode) {
+    const service = marketingServices.value.find((item) => item.code === serviceCode) || null
+    selectedMarketingService.value = service
+    marketingFormData.value = {}
+  }
+
+  function setMarketingFieldValue(key, value) {
+    marketingFormData.value = {
+      ...marketingFormData.value,
+      [key]: value
+    }
+  }
+
   async function submitCreateTicket() {
     createValidationStarted.value = true
-    createValidationErrors.value = validateCreateTicketForm(createTicketForm.value)
+    createValidationErrors.value = validateCreateTicketForm(
+      createTicketForm.value,
+      selectedMarketingService.value,
+      marketingFormData.value
+    )
     if (Object.keys(createValidationErrors.value).length > 0) {
       createSubmitError.value = 'Заполните обязательные поля формы.'
       return
     }
 
     createSubmitError.value = ''
-    const response = await store.dispatch(ticketActionTypes.createTicket, {
-      requestType: createTicketForm.value.requestType,
-      title: createTicketForm.value.title,
-      description: createTicketForm.value.description,
-      department: createTicketForm.value.department,
-      executionDate: createTicketForm.value.executionDate,
-      attachmentFiles: createTicketForm.value.attachmentFiles || []
-    })
+    const isMarketingFlow = createTicketForm.value.requestType === 'Маркетинговая заявка'
+    const response = isMarketingFlow
+      ? await store.dispatch(ticketActionTypes.createMarketingRequest, {
+        serviceCode: selectedMarketingService.value?.code || '',
+        formNumber: selectedMarketingService.value?.formNumber || '',
+        subdivision: createTicketForm.value.department,
+        executionDate: createTicketForm.value.executionDate,
+        withoutDate: false,
+        formData: marketingFormData.value,
+        attachmentFiles: createTicketForm.value.attachmentFiles || []
+      })
+      : await store.dispatch(ticketActionTypes.createTicket, {
+        requestType: createTicketForm.value.requestType,
+        title: createTicketForm.value.title,
+        description: createTicketForm.value.description,
+        department: createTicketForm.value.department,
+        executionDate: createTicketForm.value.executionDate,
+        attachmentFiles: createTicketForm.value.attachmentFiles || []
+      })
 
     if (response?.data?.success) {
       // После успешного создания очищаем вложения, чтобы не тащить File в следующую заявку.
       createTicketForm.value.attachmentFiles = []
+      marketingFormData.value = {}
       searchQuery.value = response?.data?.data?.number || ''
       submitBanner.value = 'Заявка создана и открыта в карточке.'
       activeScreen.value = 'details'
@@ -490,6 +586,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     statusForm,
     selectedResponsibleId,
     createTicketForm,
+    marketingFormData,
+    selectedMarketingService,
     isLoadingMyTickets,
     isLoadingResponsibleTickets,
     isCreatingTicket,
@@ -505,6 +603,13 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     createValidationErrors,
     createValidationStarted,
     createErrorMessage,
+    marketingErrorMessage,
+    marketingServices,
+    marketingSubdivisions,
+    isLoadingMarketingServices,
+    isLoadingMarketingSubdivisions,
+    isCreatingMarketingRequest,
+    currentMarketingSchema,
     availableRequestTypes,
     normalizedResponsibleTickets,
     summaryCards,
@@ -519,6 +624,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     openTicketDetails,
     searchTicketByNumber,
     submitCreateTicket,
+    loadMarketingReferenceData,
+    setMarketingService,
+    setMarketingFieldValue,
     setCreateExecutionDate,
     addCreateAttachments,
     removeCreateAttachment,
@@ -535,7 +643,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   }
 }
 
-function validateCreateTicketForm(form) {
+function validateCreateTicketForm(form, selectedMarketingService, marketingFormData) {
   const errors = {}
 
   if (!String(form.requestType || '').trim()) {
@@ -552,6 +660,22 @@ function validateCreateTicketForm(form) {
   }
   if (!String(form.executionDate || '').trim()) {
     errors.executionDate = 'Выберите дату исполнения.'
+  }
+
+  if (form.requestType === 'Маркетинговая заявка') {
+    if (!selectedMarketingService?.code) {
+      errors.serviceCode = 'Выберите тип маркетинговой заявки.'
+    }
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(String(form.executionDate || '').trim())) {
+      errors.executionDate = 'Укажите дату в формате ДД.ММ.ГГГГ.'
+    }
+
+    const requiredFields = selectedMarketingService?.formSchema?.fields?.filter((field) => field.required) || []
+    requiredFields.forEach((field) => {
+      if (!String(marketingFormData?.[field.key] || '').trim()) {
+        errors[`form_${field.key}`] = `Заполните поле «${field.label}».`
+      }
+    })
   }
 
   return errors

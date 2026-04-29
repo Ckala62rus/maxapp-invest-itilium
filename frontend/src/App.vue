@@ -76,6 +76,8 @@ const {
   statusForm,
   selectedResponsibleId,
   createTicketForm,
+  marketingFormData,
+  selectedMarketingService,
   availableRequestTypes,
   isLoadingMyTickets,
   isLoadingResponsibleTickets,
@@ -92,6 +94,13 @@ const {
   createValidationErrors,
   createValidationStarted,
   createErrorMessage,
+  marketingErrorMessage,
+  marketingServices,
+  marketingSubdivisions,
+  isLoadingMarketingServices,
+  isLoadingMarketingSubdivisions,
+  isCreatingMarketingRequest,
+  currentMarketingSchema,
   normalizedResponsibleTickets,
   summaryCards,
   paginatedTickets,
@@ -105,6 +114,8 @@ const {
   openTicketDetails,
   searchTicketByNumber,
   submitCreateTicket,
+  setMarketingService,
+  setMarketingFieldValue,
   setCreateExecutionDate,
   addCreateAttachments,
   removeCreateAttachment,
@@ -225,9 +236,20 @@ function openResponsibleTicketDetails(ticketNumber) {
           :create-validation-errors="createValidationErrors"
           :create-validation-started="createValidationStarted"
           :create-error-message="createErrorMessage"
+          :marketing-error-message="marketingErrorMessage"
+          :marketing-services="marketingServices"
+          :marketing-subdivisions="marketingSubdivisions"
+          :is-loading-marketing-services="isLoadingMarketingServices"
+          :is-loading-marketing-subdivisions="isLoadingMarketingSubdivisions"
+          :is-creating-marketing-request="isCreatingMarketingRequest"
+          :marketing-form-data="marketingFormData"
+          :selected-marketing-service="selectedMarketingService"
+          :current-marketing-schema="currentMarketingSchema"
           :is-creating-ticket="isCreatingTicket"
           :available-request-types="availableRequestTypes"
           @submit-create-ticket="submitCreateTicket"
+          @set-marketing-service="setMarketingService"
+          @set-marketing-field="setMarketingFieldValue"
           @set-execution-date="setCreateExecutionDate"
           @add-attachments="addCreateAttachments"
           @remove-attachment="removeCreateAttachment"

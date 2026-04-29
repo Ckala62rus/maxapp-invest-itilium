@@ -11,7 +11,10 @@ const urls = {
   ticketStatus: (number) => `/api/v1/tickets/${number}/status`,
   ticketResponsibles: (number) => `/api/v1/tickets/${number}/responsibles`,
   ticketResponsible: (number) => `/api/v1/tickets/${number}/responsible`,
-  ticketConfirm: (number) => `/api/v1/tickets/${number}/confirm`
+  ticketConfirm: (number) => `/api/v1/tickets/${number}/confirm`,
+  marketingServices: '/api/v1/marketing/services',
+  marketingSubdivisions: '/api/v1/marketing/subdivisions',
+  marketingRequests: '/api/v1/marketing/requests'
 }
 
 export default urls
