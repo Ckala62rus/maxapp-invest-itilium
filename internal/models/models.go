@@ -121,6 +121,8 @@ type TicketSummary struct {
 	Title string `json:"title"`
 	// State stores the current workflow state.
 	State string `json:"state"`
+	// CreationDate stores the ticket creation date from ITILIUM when list endpoints return it.
+	CreationDate string `json:"creationDate,omitempty"`
 	// Deadline stores the target completion date.
 	Deadline string `json:"deadline"`
 	// ResponsibleTeam stores the current responsible team.

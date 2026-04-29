@@ -175,6 +175,7 @@
     "number": "string",
     "title": "string",
     "state": "string",
+    "creationDate": "string",
     "deadline": "string",
     "responsibleTeam": "string"
   }
@@ -297,8 +298,8 @@
 {
   "serviceCode": "design",
   "formNumber": "1",
-  "subdivision": "ИВ – Иван Васильевич",
-  "executionDate": "2026-05-10",
+  "subdivision": "",
+  "executionDate": "",
   "withoutDate": false,
   "formData": {
     "layoutName": "Баннер май",
@@ -310,6 +311,11 @@
 Ответ:
 
 - созданная карточка заявки
+
+Важно:
+
+- `subdivision` и `executionDate` временно отправляются пустыми, потому что поля убраны из UI для live-проверки текущего контракта 1С.
+- Если 1С подтвердит обязательность этих полей на практике, нужно вернуть их в UI или договориться о значениях по умолчанию на backend.
 
 #### `GET /api/v1/tickets/{number}`
 
@@ -556,7 +562,8 @@
 ### `POST /create_sc_Marketing`
 
 - Отправляется как `multipart/form-data`.
-- Общие обязательные/основные поля: `id`, `Services`, `Subdivision`, `ExecutionDate` (формат `ДД.ММ.ГГГГ`), опционально части `files`.
+- Общие поля: `id`, `Services`, `Subdivision`, `ExecutionDate` (ожидаемый формат `ДД.ММ.ГГГГ`, когда дата используется), опционально части `files`.
+- На 2026-04-29 `Subdivision` и `ExecutionDate` намеренно отправляются пустыми из backend, чтобы проверить live-поведение 1С после упрощения формы в mini app.
 - Для услуги `Дизайн` добавляются поля: `LayoutName`, `Size`, `ForWhat`, `RequiredText`, `LayoutFormats`, опционально `LinkToFoto`, `LinkToExamples`.
 - Для услуги `Мероприятие` добавляются поля: `ThemeEvent`, `Description`, `Budget`, опционально `LinkToFoto`, `LinkToExamples`.
 

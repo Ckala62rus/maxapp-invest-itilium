@@ -41,7 +41,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   // The responsible selector keeps the chosen ITILIUM assignee id before submit.
   const selectedResponsibleId = ref('')
 
-  // Форма создания заявки: текстовые поля + реальные объекты File для multipart (см. `tickets.createTicket`).
+  // Форма создания заявки: UI показывает только тип, тему/описание и вложения.
+  // department/executionDate оставляем в модели как технические поля: сейчас отправляем их пустыми,
+  // чтобы проверить live-контракт 1С без лишних полей на экране.
   const createTicketForm = ref({
     requestType: defaultRequestType,
     title: '',
@@ -86,7 +88,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const storeMyTickets = computed(() => store.getters[ticketGetterTypes.myTickets] || [])
   const storeResponsibleTickets = computed(() => store.getters[ticketGetterTypes.responsibleTickets] || [])
 
-  // Экран «Мои заявки» строим только из servicecalls профиля.
+  // Если backend не смог получить краткие карточки из 1С, показываем хотя бы номера из servicecalls профиля.
   const ticketsFromServiceCalls = computed(() => {
     const user = currentUser.value
     const ids = user?.servicecalls
@@ -104,10 +106,11 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     return uniqueIds
       .map((number) => ({
         number,
-        title: `Заявка ${number}`,
-        state: 'Откройте карточку',
+        title: 'Тема загрузится после открытия',
+        state: 'Статус не загружен',
+        creationDate: '',
         deadline: '—',
-        tone: 'info'
+        tone: resolveTicketTone('')
       }))
   })
   const selectedTicket = computed(() => store.getters[ticketGetterTypes.selectedTicket] || null)
@@ -150,6 +153,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
       return {
         ...merged,
+        title: normalizeTicketTitle(merged),
+        creationDate: normalizeTicketCreationDate(merged),
+        state: normalizeTicketState(merged.state),
         tone: merged.tone || resolveTicketTone(merged.state)
       }
     })
@@ -160,6 +166,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
     return source.map((ticket) => ({
       ...ticket,
+      title: normalizeTicketTitle(ticket),
+      creationDate: normalizeTicketCreationDate(ticket),
+      state: normalizeTicketState(ticket.state),
       tone: ticket.tone || resolveTicketTone(ticket.state),
       owner: ticket.owner || ticket.responsibleTeam || 'Не указано'
     }))
@@ -228,7 +237,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
   }, { immediate: true })
 
-  // При выборе маркетингового типа подгружаем справочники 1С и инициализируем шаги wizard.
+  // При выборе маркетингового типа подгружаем справочники 1С для динамической части формы.
   watch(
     () => createTicketForm.value.requestType,
     async (requestType) => {
@@ -392,8 +401,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       ? await store.dispatch(ticketActionTypes.createMarketingRequest, {
         serviceCode: selectedMarketingService.value?.code || '',
         formNumber: selectedMarketingService.value?.formNumber || '',
-        subdivision: createTicketForm.value.department,
-        executionDate: createTicketForm.value.executionDate,
+        // Эти поля скрыты в UI: отправляем пустые значения и проверяем, примет ли их live-контракт 1С.
+        subdivision: '',
+        executionDate: '',
         withoutDate: false,
         formData: marketingFormData.value,
         attachmentFiles: createTicketForm.value.attachmentFiles || []
@@ -503,7 +513,13 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       confirmButtonText: 'Да, назначить',
       cancelButtonText: 'Отмена',
       reverseButtons: true,
-      focusCancel: true
+      focusCancel: true,
+      customClass: {
+        popup: 'maxapp-swal-popup',
+        confirmButton: 'maxapp-swal-confirm',
+        cancelButton: 'maxapp-swal-cancel'
+      },
+      buttonsStyling: true
     })
     if (!confirm.isConfirmed) {
       return
@@ -646,19 +662,9 @@ function validateCreateTicketForm(form, selectedMarketingService, marketingFormD
   if (!String(form.description || '').trim()) {
     errors.description = 'Добавьте подробное описание.'
   }
-  if (!String(form.department || '').trim()) {
-    errors.department = 'Выберите подразделение.'
-  }
-  if (!String(form.executionDate || '').trim()) {
-    errors.executionDate = 'Выберите дату исполнения.'
-  }
-
   if (form.requestType === 'Маркетинговая заявка') {
     if (!selectedMarketingService?.code) {
       errors.serviceCode = 'Выберите тип маркетинговой заявки.'
-    }
-    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(String(form.executionDate || '').trim())) {
-      errors.executionDate = 'Укажите дату в формате ДД.ММ.ГГГГ.'
     }
 
     const requiredFields = selectedMarketingService?.formSchema?.fields?.filter((field) => field.required) || []
@@ -672,23 +678,46 @@ function validateCreateTicketForm(form, selectedMarketingService, marketingFormD
   return errors
 }
 
-function resolveTicketTone(state) {
-  switch (state) {
-    case 'Зарегистрирована':
-      return 'blue'
-    case 'В работе':
-      return 'amber'
-    case 'На согласовании':
-      return 'purple'
-    case 'Закрыта':
-      return 'green'
-    case 'Отложена':
-      return 'slate'
-    case 'Ожидает ответа':
-      return 'amber'
-    default:
-      return 'info'
+function normalizeTicketTitle(ticket) {
+  const title = String(ticket?.title || '').trim()
+  const number = String(ticket?.number || '').trim()
+  if (!title || title === `Заявка ${number}`) {
+    return 'Тема не загружена'
   }
+  return title
+}
+
+function normalizeTicketCreationDate(ticket) {
+  return String(ticket?.creationDate || ticket?.createdAt || ticket?.dateCreate || '').trim()
+}
+
+function normalizeTicketState(state) {
+  const text = String(state || '').trim()
+  return text || 'Статус не загружен'
+}
+
+function resolveTicketTone(state) {
+  const normalized = String(state || '').toLowerCase()
+  // Цвета меняются централизованно через классы status-pill.* в styles.css.
+  if (normalized.includes('закрыт') || normalized.includes('выполн')) {
+    return 'green'
+  }
+  if (normalized.includes('работ')) {
+    return 'amber'
+  }
+  if (normalized.includes('соглас')) {
+    return 'purple'
+  }
+  if (normalized.includes('отлож')) {
+    return 'slate'
+  }
+  if (normalized.includes('ожидан') || normalized.includes('ответ')) {
+    return 'amber'
+  }
+  if (normalized.includes('зарегистр')) {
+    return 'blue'
+  }
+  return 'info'
 }
 
 function formatTimelineTime(value) {

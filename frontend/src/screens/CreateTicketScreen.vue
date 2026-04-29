@@ -135,7 +135,7 @@ function setMarketingField(key, value) {
       </label>
       <template v-if="createTicketForm.requestType !== 'Маркетинговая заявка'">
         <label>
-          Краткая тема
+          Тема
           <input
             v-model="createTicketForm.title"
             type="text"
@@ -151,26 +151,6 @@ function setMarketingField(key, value) {
             :class="{ 'field-invalid': createValidationStarted && createValidationErrors.description }"
           ></textarea>
           <small v-if="createValidationStarted && createValidationErrors.description" class="field-error">{{ createValidationErrors.description }}</small>
-        </label>
-        <label>
-          Подразделение
-          <input
-            v-model="createTicketForm.department"
-            type="text"
-            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
-          />
-          <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
-        </label>
-        <label>
-          Исполнить до
-          <input
-            type="date"
-            class="date-field"
-            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
-            :value="createTicketForm.executionDate || ''"
-            @input="setExecutionDate($event.target.value)"
-          />
-          <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
         </label>
       </template>
 
@@ -189,36 +169,6 @@ function setMarketingField(key, value) {
             </option>
           </select>
           <small v-if="createValidationStarted && createValidationErrors.serviceCode" class="field-error">{{ createValidationErrors.serviceCode }}</small>
-        </label>
-
-        <label>
-          Подразделение
-          <select
-            v-model="createTicketForm.department"
-            :disabled="isLoadingMarketingSubdivisions || isCreatingMarketingRequest"
-            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
-          >
-            <option value="" disabled>Выберите подразделение</option>
-            <option v-for="subdivision in marketingSubdivisions" :key="subdivision.code || subdivision.name" :value="subdivision.name">
-              {{ subdivision.name }}
-            </option>
-          </select>
-          <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
-        </label>
-
-        <label>
-          Желаемая дата исполнения
-          <input
-            type="text"
-            class="date-field"
-            inputmode="numeric"
-            placeholder="ДД.ММ.ГГГГ"
-            :disabled="isCreatingMarketingRequest"
-            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
-            :value="createTicketForm.executionDate || ''"
-            @input="setExecutionDate($event.target.value)"
-          />
-          <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
         </label>
 
         <div class="content-card" style="padding: 12px">

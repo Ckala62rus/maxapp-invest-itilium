@@ -34,7 +34,7 @@ itilium:
   login: ""
   password: ""
   # Timeout for outbound ITILIUM requests.
-  timeout: 20s
+  timeout: 50s
 
 redis:
   # Redis cache host and port used in docker compose.

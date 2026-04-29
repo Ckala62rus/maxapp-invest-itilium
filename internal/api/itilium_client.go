@@ -209,6 +209,7 @@ func mapListSCItems(items []map[string]any) []models.TicketSummary {
 			Number:          number,
 			Title:           pickStringFromMap(item, "title", "Title", "shortDescription", "ShortDescription", "Тема"),
 			State:           pickStringFromMap(item, "state", "State", "status", "Status", "Состояние"),
+			CreationDate:    pickStringFromMap(item, "creationDate", "CreationDate", "dateCreate", "createdAt", "ДатаСоздания"),
 			Deadline:        pickStringFromMap(item, "deadline", "Deadline", "executionDate", "ДатаИсполнения"),
 			ResponsibleTeam: pickStringFromMap(item, "responsibleTeam", "ResponsibleTeam", "client", "OU", "Подразделение"),
 		})
@@ -311,6 +312,7 @@ func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]m
 			Number:          detail.Number,
 			Title:           detail.Title,
 			State:           detail.State,
+			CreationDate:    detail.CreationDate,
 			Deadline:        detail.Deadline,
 			ResponsibleTeam: detail.ResponsibleTeam,
 		})
@@ -779,7 +781,8 @@ func parseCreateSCResponse(payload []byte, req models.CreateTicketRequest) (mode
 		Title:                pickStringFromMap(m, "title", "Title", "shortDescription", "ShortDescription"),
 		Description:          pickStringFromMap(m, "description", "Description"),
 		State:                pickStringFromMap(m, "state", "State", "status", "Status"),
-		Deadline:             pickStringFromMap(m, "deadline", "Deadline", "executionDate"),
+		CreationDate:         pickStringFromMap(m, "creationDate", "CreationDate", "dateCreate", "ДатаСоздания"),
+		Deadline:             pickStringFromMap(m, "deadline", "Deadline", "deadlineDate", "executionDate", "ДатаИсполнения"),
 		ResponsibleTeam:      pickStringFromMap(m, "responsibleTeam", "ResponsibleTeam", "OU", "client"),
 		CanChangeResponsible: boolFromAny(m["canChangeResponsible"]),
 	}

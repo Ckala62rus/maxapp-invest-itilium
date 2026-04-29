@@ -163,6 +163,7 @@ function syncTicketSummaryList(list, ticket) {
       ...item,
       title: ticket.title,
       state: ticket.state,
+      creationDate: ticket.creationDate,
       deadline: ticket.deadline,
       responsibleTeam: ticket.responsibleTeam
     }
@@ -179,6 +180,7 @@ function prependTicketSummary(list, ticket) {
     number: ticket.number,
     title: ticket.title,
     state: ticket.state,
+    creationDate: ticket.creationDate,
     deadline: ticket.deadline,
     responsibleTeam: ticket.responsibleTeam
   }

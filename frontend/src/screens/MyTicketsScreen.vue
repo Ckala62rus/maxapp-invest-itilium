@@ -69,11 +69,11 @@ function setTicketsPage(page) {
         @click="openTicketDetails(ticket.number)"
       >
         <div class="ticket-topline">
-          <strong>{{ ticket.number }}</strong>
+          <strong>Заявка {{ ticket.number }}</strong>
           <span class="status-pill" :class="ticket.tone">{{ ticket.state }}</span>
         </div>
-        <h3>{{ ticket.title }}</h3>
-        <p>Срок реакции до {{ ticket.deadline }}</p>
+        <h3>{{ ticket.title || 'Тема не указана' }}</h3>
+        <p>Дата создания: {{ ticket.creationDate || '—' }}</p>
       </article>
     </div>
 

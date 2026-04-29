@@ -320,7 +320,13 @@ async function chooseStatus(status, statusForm) {
     confirmButtonText: 'Да, сменить',
     cancelButtonText: 'Отмена',
     reverseButtons: true,
-    focusCancel: true
+    focusCancel: true,
+    customClass: {
+      popup: 'maxapp-swal-popup',
+      confirmButton: 'maxapp-swal-confirm',
+      cancelButton: 'maxapp-swal-cancel'
+    },
+    buttonsStyling: true
   })
   if (!result.isConfirmed) {
     return
@@ -348,7 +354,7 @@ function closeCommentPanel() {
 
 function openRatingPanel() {
   activePanel.value = 'rating'
-  ratingMark.value = null
+  ratingMark.value = 5
   ratingComment.value = ''
   ratingCommentError.value = ''
 }
@@ -440,12 +446,8 @@ function isWaitingForResponseStatus(status) {
     <article v-else-if="selectedTicket" class="content-card">
       <div class="details-grid">
         <div>
-          <span>Краткая тема</span>
+          <span>Тема</span>
           <strong>{{ selectedTicket.title }}</strong>
-        </div>
-        <div>
-          <span>Ответственная команда</span>
-          <strong>{{ selectedTicket.responsibleTeam }}</strong>
         </div>
         <div>
           <span>Дата создания</span>

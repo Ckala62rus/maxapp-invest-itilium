@@ -233,16 +233,11 @@ func (s *TicketService) CreateMarketingRequest(ctx context.Context, request mode
 	if strings.TrimSpace(request.FormNumber) == "" {
 		return models.TicketDetail{}, errors.New("form number is required")
 	}
-	if strings.TrimSpace(request.Subdivision) == "" {
-		return models.TicketDetail{}, errors.New("subdivision is required")
-	}
-	if !request.WithoutDate && strings.TrimSpace(request.ExecutionDate) == "" {
-		return models.TicketDetail{}, errors.New("execution date is required")
-	}
 	if len(request.FormData) == 0 {
 		return models.TicketDetail{}, errors.New("form data is required")
 	}
 
-	// 4-й шаг полностью динамический, поля валидируются на 1С стороне по номеру формы.
+	// Subdivision/ExecutionDate временно не требуем: проверяем live-контракт 1С без этих полей на UI.
+	// Если 1С вернёт ошибку обязательности, вернём поля или согласуем backend-default.
 	return s.client.CreateMarketingRequest(ctx, request)
 }
