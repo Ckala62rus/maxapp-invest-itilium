@@ -83,13 +83,6 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     return options
   })
 
-  // The responsible selector demonstrates a future modal with paginated assignees.
-  const responsiblePeople = [
-    { team: 'Отдел ИТ', person: 'Иван Петров', role: 'Старший инженер', externalId: 'emp-1' },
-    { team: 'Отдел ИТ', person: 'Елена Орлова', role: 'Системный аналитик', externalId: 'emp-2' },
-    { team: 'Маркетинг', person: 'Мария Соколова', role: 'Маркетолог', externalId: 'emp-3' }
-  ]
-
   const storeMyTickets = computed(() => store.getters[ticketGetterTypes.myTickets] || [])
   const storeResponsibleTickets = computed(() => store.getters[ticketGetterTypes.responsibleTickets] || [])
 
@@ -294,9 +287,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
   const detailStatusTone = computed(() => resolveTicketTone(selectedTicket.value?.state))
   const availableStatusOptions = computed(() => selectedTicket.value?.availableStates || [])
-  const availableResponsibleOptions = computed(() => {
-    return responsibleOptions.value.length ? responsibleOptions.value : responsiblePeople
-  })
+  const availableResponsibleOptions = computed(() => responsibleOptions.value)
 
   const selectedTicketTimeline = computed(() => {
     if (!selectedTicket.value?.timeline?.length) {
