@@ -1,4 +1,4 @@
-package services
+package services_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/api"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/services"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,7 +60,7 @@ func (s *employeeLookupClientStub) RegisterUser(_ context.Context, _ models.Regi
 }
 
 func TestProfileServiceGetProfileFallback(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
 
 	profile, err := service.GetProfile(context.Background(), "100500")
 
@@ -69,7 +70,7 @@ func TestProfileServiceGetProfileFallback(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileUsesLookupWhenStoredProfileNeedsRegistration(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{
+	service := services.NewProfileService(&profileRepositoryStub{
 		getProfile: models.UserProfile{
 			UserID:               "100245",
 			Username:             "100245",
@@ -117,7 +118,7 @@ func TestProfileServiceGetProfileUsesLookupWhenStoredProfileNeedsRegistration(t 
 }
 
 func TestProfileServiceGetProfileTreats401AsRegistrationRequired(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		err: api.HTTPStatusError{StatusCode: 401},
 	})
 
@@ -131,7 +132,7 @@ func TestProfileServiceGetProfileTreats401AsRegistrationRequired(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileTreats403AsPendingRegistration(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		err: api.HTTPStatusError{StatusCode: 403},
 	})
 
@@ -146,7 +147,7 @@ func TestProfileServiceGetProfileTreats403AsPendingRegistration(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileReturnsUnknownLookupErrors(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		err: errors.New("boom"),
 	})
 
@@ -157,7 +158,7 @@ func TestProfileServiceGetProfileReturnsUnknownLookupErrors(t *testing.T) {
 }
 
 func TestProfileServiceRegisterValidatesInput(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
 
 	_, err := service.Register(context.Background(), models.RegistrationRequest{})
 
@@ -165,7 +166,7 @@ func TestProfileServiceRegisterValidatesInput(t *testing.T) {
 }
 
 func TestProfileServiceRegisterReturnsPendingProfile(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
 
 	profile, err := service.Register(context.Background(), models.RegistrationRequest{
 		UserID:       "100245",
@@ -184,7 +185,7 @@ func TestProfileServiceRegisterReturnsPendingProfile(t *testing.T) {
 }
 
 func TestProfileServiceRegisterReturnsExternalError(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		regErr: errors.New("upstream registration failed"),
 	})
 
@@ -200,7 +201,7 @@ func TestProfileServiceRegisterReturnsExternalError(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileReturnsStoredPendingProfile(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{
+	service := services.NewProfileService(&profileRepositoryStub{
 		getProfile: models.UserProfile{
 			UserID:               "100245",
 			Username:             "100245",
@@ -224,7 +225,7 @@ func TestProfileServiceGetProfileReturnsStoredPendingProfile(t *testing.T) {
 }
 
 func TestProfileServiceFindEmployeeByIdentifierDefaultsAttributeCode(t *testing.T) {
-	service := NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
+	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		response: models.EmployeeLookupResult{
 			UUID:         "emp-42",
 			ServiceCalls: []string{"SC-1", "SC-2"},

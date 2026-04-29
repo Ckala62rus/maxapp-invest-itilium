@@ -1,4 +1,4 @@
-package auth
+package auth_test
 
 import (
 	"crypto/hmac"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/auth"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/config"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,7 @@ import (
 func TestManagerValidateInitData(t *testing.T) {
 	t.Parallel()
 
-	manager := NewManager(config.AuthConfig{
+	manager := auth.NewManager(config.AuthConfig{
 		BotToken:       "test-bot-token",
 		MaxInitDataTTL: 10 * time.Minute,
 	})
@@ -40,7 +41,7 @@ func TestManagerValidateInitData(t *testing.T) {
 func TestManagerIssueAndParseAccessToken(t *testing.T) {
 	t.Parallel()
 
-	manager := NewManager(config.AuthConfig{
+	manager := auth.NewManager(config.AuthConfig{
 		AccessTokenSecret: "super-secret",
 		AccessTokenTTL:    2 * time.Hour,
 	})

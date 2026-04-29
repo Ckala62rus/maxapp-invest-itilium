@@ -1,4 +1,4 @@
-package services
+package services_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/repository"
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/services"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,9 +59,21 @@ func (s *itiliumClientStub) ConfirmTicket(_ context.Context, number string, _ mo
 	return models.TicketDetail{Number: number}, nil
 }
 
+func (s *itiliumClientStub) ListMarketingServices(_ context.Context, _ string) ([]models.MarketingServiceType, error) {
+	return []models.MarketingServiceType{{Code: "design", Name: "Дизайн", FormNumber: "1"}}, nil
+}
+
+func (s *itiliumClientStub) ListMarketingSubdivisions(_ context.Context, _ string) ([]models.MarketingSubdivision, error) {
+	return []models.MarketingSubdivision{{Name: "Маркетинг"}}, nil
+}
+
+func (s *itiliumClientStub) CreateMarketingRequest(_ context.Context, _ models.CreateMarketingRequest) (models.TicketDetail, error) {
+	return models.TicketDetail{Number: "SC-M-1", Title: "Marketing"}, nil
+}
+
 func TestTicketServiceGetTicketUsesCache(t *testing.T) {
 	client := &itiliumClientStub{}
-	service := NewTicketService(client, repository.NewRedisCache(nil))
+	service := services.NewTicketService(client, repository.NewRedisCache(nil))
 
 	ticket, err := service.GetTicket(context.Background(), "100245", "SC-100")
 
@@ -70,7 +83,7 @@ func TestTicketServiceGetTicketUsesCache(t *testing.T) {
 }
 
 func TestTicketServiceCreateTicketValidatesInput(t *testing.T) {
-	service := NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
+	service := services.NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
 
 	_, err := service.CreateTicket(context.Background(), models.CreateTicketRequest{})
 
@@ -78,7 +91,7 @@ func TestTicketServiceCreateTicketValidatesInput(t *testing.T) {
 }
 
 func TestTicketServiceAddCommentRequiresMessageOrAttachment(t *testing.T) {
-	service := NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
+	service := services.NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
 
 	_, err := service.AddComment(context.Background(), "SC-1", models.AddCommentRequest{})
 

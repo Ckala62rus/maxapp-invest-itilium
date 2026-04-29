@@ -42,9 +42,40 @@ npm run build
 ```bash
 go run ./cmd/bot
 ```
-- Тесты:
+
+## Тесты
+
+Go-тесты вынесены в отдельную директорию `tests/` и сгруппированы по проверяемым слоям:
+
+- `tests/api` — разбор ответов и флагов ITILIUM/1С
+- `tests/auth` — MAX initData и backend access token
+- `tests/handlers` — HTTP routes/middleware
+- `tests/services` — бизнес-логика сервисов
+
+Запуск всех Go-тестов проекта:
+
 ```bash
 go test ./...
+```
+
+Запуск только вынесенных тестов:
+
+```bash
+go test ./tests/...
+```
+
+Запуск отдельной группы:
+
+```bash
+go test ./tests/api
+go test ./tests/services
+```
+
+Frontend-сборка для проверки Vue-кода:
+
+```bash
+cd frontend
+npm run build
 ```
 
 ## Миграции
