@@ -1,3 +1,5 @@
+// Package services_test проверяет ProfileService на уровне публичного поведения.
+// Здесь нет реального ITILIUM и базы: внешние зависимости заменены маленькими stubs.
 package services_test
 
 import (
@@ -11,24 +13,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// profileRepositoryStub имитирует локальное хранилище профилей.
+// Поля структуры задаются прямо в тесте, чтобы получить нужный сценарий.
 type profileRepositoryStub struct {
 	getProfile models.UserProfile
 	getOK      bool
 	saved      models.RegistrationRequest
 }
 
+// employeeLookupClientStub имитирует клиент ITILIUM для find_employee/registration.
 type employeeLookupClientStub struct {
+	// response вернётся при успешном FindEmployeeByIdentifier.
 	response models.EmployeeLookupResult
-	err      error
-	regErr   error
+	// err позволяет проверить, как сервис реагирует на ошибки find_employee.
+	err error
+	// regErr позволяет проверить ошибки регистрации.
+	regErr error
 }
 
 func (s *profileRepositoryStub) GetByUserID(_ context.Context, _ string) (models.UserProfile, bool) {
+	// Второе возвращаемое значение bool в Go часто означает "нашлось или нет".
 	return s.getProfile, s.getOK
 }
 
 func (s *profileRepositoryStub) SaveRegistration(_ context.Context, request models.RegistrationRequest) models.UserProfile {
+	// Сохраняем request в stub: при необходимости тест мог бы проверить, что именно было передано.
 	s.saved = request
+	// Возвращаем профиль в состоянии "ожидает регистрации", как делает реальный repository.
 	return models.UserProfile{
 		UserID:               request.UserID,
 		Username:             request.UserID,
@@ -42,12 +53,15 @@ func (s *profileRepositoryStub) SaveRegistration(_ context.Context, request mode
 }
 
 func (s *employeeLookupClientStub) FindEmployeeByIdentifier(_ context.Context, request models.EmployeeLookupRequest) (models.EmployeeLookupResult, error) {
+	// Если тест настроил ошибку, возвращаем её и не строим успешный ответ.
 	if s.err != nil {
 		return models.EmployeeLookupResult{}, s.err
 	}
+	// Если тест не указал AttributeCode, stub повторяет поведение сервиса по умолчанию.
 	if s.response.AttributeCode == "" {
 		s.response.AttributeCode = request.AttributeCode
 	}
+	// То же для Identifier: удобно не дублировать его в каждом кейсе.
 	if s.response.Identifier == "" {
 		s.response.Identifier = request.Identifier
 	}
@@ -56,10 +70,12 @@ func (s *employeeLookupClientStub) FindEmployeeByIdentifier(_ context.Context, r
 }
 
 func (s *employeeLookupClientStub) RegisterUser(_ context.Context, _ models.RegistrationRequest) error {
+	// Для регистрации нам достаточно вернуть nil или заранее заданную ошибку.
 	return s.regErr
 }
 
 func TestProfileServiceGetProfileFallback(t *testing.T) {
+	// Пустой repository + пустой ITILIUM lookup приводят к fallback-профилю.
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
 
 	profile, err := service.GetProfile(context.Background(), "100500")
@@ -70,6 +86,8 @@ func TestProfileServiceGetProfileFallback(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileUsesLookupWhenStoredProfileNeedsRegistration(t *testing.T) {
+	// Arrange: локально есть старый профиль "нужна регистрация",
+	// но ITILIUM уже возвращает полноценного сотрудника.
 	service := services.NewProfileService(&profileRepositoryStub{
 		getProfile: models.UserProfile{
 			UserID:               "100245",
@@ -98,8 +116,10 @@ func TestProfileServiceGetProfileUsesLookupWhenStoredProfileNeedsRegistration(t 
 		},
 	})
 
+	// Act: запрашиваем профиль.
 	profile, err := service.GetProfile(context.Background(), "100245")
 
+	// Assert: сервис должен предпочесть живой lookup из ITILIUM старому fallback-профилю.
 	require.NoError(t, err)
 	require.Equal(t, "100245", profile.UserID)
 	require.Equal(t, "40367639", profile.Username)
@@ -118,6 +138,8 @@ func TestProfileServiceGetProfileUsesLookupWhenStoredProfileNeedsRegistration(t 
 }
 
 func TestProfileServiceGetProfileTreats401AsRegistrationRequired(t *testing.T) {
+	// HTTP 401 от find_employee в нашей бизнес-логике значит:
+	// "сотрудник не найден, нужно показать регистрацию".
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		err: api.HTTPStatusError{StatusCode: 401},
 	})
@@ -132,6 +154,7 @@ func TestProfileServiceGetProfileTreats401AsRegistrationRequired(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileTreats403AsPendingRegistration(t *testing.T) {
+	// HTTP 403 от 1С значит: регистрация уже отправлена и ждёт обработки.
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		err: api.HTTPStatusError{StatusCode: 403},
 	})
@@ -147,6 +170,8 @@ func TestProfileServiceGetProfileTreats403AsPendingRegistration(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileReturnsUnknownLookupErrors(t *testing.T) {
+	// Неизвестные ошибки нельзя маскировать под регистрацию,
+	// иначе мы спрячем настоящую техническую проблему.
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		err: errors.New("boom"),
 	})
@@ -158,6 +183,7 @@ func TestProfileServiceGetProfileReturnsUnknownLookupErrors(t *testing.T) {
 }
 
 func TestProfileServiceRegisterValidatesInput(t *testing.T) {
+	// Пустая регистрационная форма должна отвалиться на валидации до вызова ITILIUM.
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
 
 	_, err := service.Register(context.Background(), models.RegistrationRequest{})
@@ -166,6 +192,7 @@ func TestProfileServiceRegisterValidatesInput(t *testing.T) {
 }
 
 func TestProfileServiceRegisterReturnsPendingProfile(t *testing.T) {
+	// Успешная отправка регистрации переводит пользователя в состояние "pending".
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{})
 
 	profile, err := service.Register(context.Background(), models.RegistrationRequest{
@@ -185,6 +212,7 @@ func TestProfileServiceRegisterReturnsPendingProfile(t *testing.T) {
 }
 
 func TestProfileServiceRegisterReturnsExternalError(t *testing.T) {
+	// Если 1С не приняла регистрацию, сервис возвращает эту ошибку вызывающему коду.
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		regErr: errors.New("upstream registration failed"),
 	})
@@ -201,6 +229,8 @@ func TestProfileServiceRegisterReturnsExternalError(t *testing.T) {
 }
 
 func TestProfileServiceGetProfileReturnsStoredPendingProfile(t *testing.T) {
+	// Если локально уже сохранён pending-профиль, а find_employee всё ещё отвечает 401,
+	// пользователь должен оставаться на экране ожидания, а не возвращаться к форме регистрации.
 	service := services.NewProfileService(&profileRepositoryStub{
 		getProfile: models.UserProfile{
 			UserID:               "100245",
@@ -225,6 +255,7 @@ func TestProfileServiceGetProfileReturnsStoredPendingProfile(t *testing.T) {
 }
 
 func TestProfileServiceFindEmployeeByIdentifierDefaultsAttributeCode(t *testing.T) {
+	// Если UI не передал attributeCode, сервис должен использовать legacy-дефолт "id".
 	service := services.NewProfileService(&profileRepositoryStub{}, &employeeLookupClientStub{
 		response: models.EmployeeLookupResult{
 			UUID:         "emp-42",
