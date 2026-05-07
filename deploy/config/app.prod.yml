@@ -45,17 +45,3 @@ redis:
   db: 0
   # Keep Redis enabled in production.
   enabled: true
-
-postgres:
-  # Postgres host used from the compose network.
-  host: postgres
-  # Postgres port used from the compose network.
-  port: 5432
-  # Main database name for application data.
-  database: app
-  # Main database user.
-  user: postgres
-  # Main database password should be overridden in production.
-  password: postgres
-  # Disable SSL for internal docker networking unless your environment requires it.
-  ssl_mode: disable

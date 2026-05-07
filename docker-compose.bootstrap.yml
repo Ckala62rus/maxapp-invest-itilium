@@ -1,0 +1,16 @@
+services:
+  # HTTP-only nginx used to pass the first certbot webroot challenge.
+  web:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+      args:
+        NGINX_CONF: nginx.certbot.template.conf
+    container_name: maxapp-itilium-web-bootstrap
+    restart: unless-stopped
+    environment:
+      CERT_DOMAIN: ${CERT_DOMAIN}
+    ports:
+      - "${WEB_HTTP_PORT:-80}:80"
+    volumes:
+      - /var/www/certbot:/var/www/certbot:ro

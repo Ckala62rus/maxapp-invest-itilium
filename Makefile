@@ -2,8 +2,9 @@
 
 DEV_COMPOSE = docker compose -f docker-compose.dev.yml
 PROD_COMPOSE = docker compose -f docker-compose.yml
+PROD_BOOTSTRAP_COMPOSE = docker compose -f docker-compose.bootstrap.yml
 
-.PHONY: frontend-install frontend-dev frontend-build backend-run dev-up dev-down prod-up prod-down migrate-up migrate-down migrate-version mockery-help
+.PHONY: frontend-install frontend-dev frontend-build backend-run dev-up dev-down prod-bootstrap-up prod-bootstrap-down prod-up prod-down migrate-up migrate-down migrate-version mockery-help
 
 # Installs frontend dependencies for local work outside Docker.
 frontend-install:
@@ -32,6 +33,14 @@ dev-down:
 # Starts the production docker stack.
 prod-up:
 	$(PROD_COMPOSE) up --build -d
+
+# Starts the HTTP-only nginx stack for the first certbot challenge.
+prod-bootstrap-up:
+	$(PROD_BOOTSTRAP_COMPOSE) up --build -d
+
+# Stops the HTTP-only nginx bootstrap stack.
+prod-bootstrap-down:
+	$(PROD_BOOTSTRAP_COMPOSE) down
 
 # Stops the production docker stack.
 prod-down:

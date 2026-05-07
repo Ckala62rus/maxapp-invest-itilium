@@ -14,7 +14,7 @@
 - `internal/container` - composition root for dependency injection
 - `frontend` - static prototype and future Vue 3 application
 - `deploy` - nginx, observability and mounted config files
-- `migrations` - SQL migrations for Postgres
+- `migrations` - SQL migrations kept as a development/tooling scaffold until persistent storage is introduced
 - `documentation` - architecture and operational docs
 
 ## Architecture
@@ -31,7 +31,6 @@ flowchart LR
     services --> redis[RedisCache]
     backend --> metrics[PrometheusMetrics]
     backend --> logs[StdoutAndLokiLogs]
-    services --> postgres[Postgres]
 ```
 
 ## Runtime Flow
@@ -46,7 +45,7 @@ flowchart LR
 4. The handler validates and decodes the request.
 5. The handler calls a service interface.
 6. The service orchestrates:
-   - repository reads and writes
+   - in-memory profile reads and writes
    - Redis cache
    - ITILIUM API client calls
 7. The result comes back as a unified JSON response with `requestId`.
@@ -71,10 +70,10 @@ flowchart LR
 ## Metrics Strategy
 - `/metrics` exposes Prometheus metrics.
 - HTTP request count and latency are tracked by middleware.
-- Additional ITILIUM, Redis and DB metrics should be added as business functionality grows.
+- Additional ITILIUM and Redis metrics should be added as business functionality grows.
 
 ## Current Scaffold Notes
 - The backend uses a `DemoClient` while `app.dev.yml` keeps `demo_mode: true`.
-- The frontend is still a static prototype intended for customer review.
 - Redis is optional at runtime and degrades gracefully when unavailable.
 - The project is ready to switch to the real ITILIUM client by filling `ITILIUM_*` config and turning off demo mode.
+- Postgres is not part of the current production runtime; user profile snapshots are stored in memory and real state is read from ITILIUM.

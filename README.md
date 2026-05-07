@@ -1,6 +1,6 @@
 # MAX ITILIUM Mini App
 
-Проект переводит Telegram `aiogram`-бота ITILIUM в архитектуру MAX Mini App: `Vue 3` фронт, `Go` backend, Docker dev/prod, Redis, Postgres, Prometheus, Loki и Grafana.
+Проект переводит Telegram `aiogram`-бота ITILIUM в архитектуру MAX Mini App: `Vue 3` фронт, `Go` backend, Docker dev/prod, Redis, Prometheus, Loki и Grafana.
 
 ## Что уже есть
 - статический адаптивный прототип экранов в `frontend/`
@@ -9,7 +9,7 @@
 - mounted config через `deploy/config/*.yml`
 - базовые middleware для `request_id`, логирования, метрик и panic recovery
 - demo ITILIUM client для безопасной разработки без live API
-- первая SQL миграция
+- SQL миграции как dev/tooling scaffold для будущего persistent storage
 - документация по UX, маршрутам, миграциям и общей архитектуре
 
 ## Быстрый старт
@@ -133,6 +133,8 @@ npm run build
 ```
 
 ## Миграции
+Postgres сейчас не входит в production runtime: backend хранит временные профили в памяти, использует Redis как cache и читает бизнес-состояние из ITILIUM. Миграции оставлены для dev-экспериментов и будущей persistent repository.
+
 Применить миграции:
 ```bash
 docker compose -f docker-compose.dev.yml --profile tools run --rm migrate \
@@ -144,6 +146,7 @@ docker compose -f docker-compose.dev.yml --profile tools run --rm migrate \
 
 ## Документация
 - `documentation/local_development.md` — локальная разработка (env, Vite, proxy, `go run`)
+- `documentation/production_deployment.md` — production compose, nginx HTTPS и certbot
 - `documentation/aiogram_feature_map.md`
 - `documentation/ui_flows.md`
 - `documentation/system_overview.md`
