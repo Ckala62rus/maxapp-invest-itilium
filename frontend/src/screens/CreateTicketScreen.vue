@@ -171,6 +171,47 @@ function setMarketingField(key, value) {
           <small v-if="createValidationStarted && createValidationErrors.serviceCode" class="field-error">{{ createValidationErrors.serviceCode }}</small>
         </label>
 
+        <label>
+          Выбор подразделения <span>*</span>
+          <select
+            v-if="marketingSubdivisions.length > 0"
+            v-model="createTicketForm.department"
+            :disabled="isLoadingMarketingSubdivisions || isCreatingMarketingRequest"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
+          >
+            <option value="" disabled>Выберите подразделение</option>
+            <option v-for="subdivision in marketingSubdivisions" :key="subdivision.code || subdivision.name" :value="subdivision.name">
+              {{ subdivision.name }}
+            </option>
+          </select>
+          <input
+            v-else
+            v-model="createTicketForm.department"
+            type="text"
+            :disabled="isLoadingMarketingSubdivisions || isCreatingMarketingRequest"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.department }"
+            placeholder="Укажите подразделение"
+          />
+          <small v-if="createValidationStarted && createValidationErrors.department" class="field-error">{{ createValidationErrors.department }}</small>
+        </label>
+
+        <label>
+          Дата исполнения <span>*</span>
+          <el-date-picker
+            class="date-field"
+            :class="{ 'field-invalid': createValidationStarted && createValidationErrors.executionDate }"
+            :model-value="createTicketForm.executionDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            format="DD.MM.YYYY"
+            placeholder="Выберите дату"
+            :disabled="isCreatingMarketingRequest"
+            :teleported="false"
+            @update:model-value="setExecutionDate"
+          />
+          <small v-if="createValidationStarted && createValidationErrors.executionDate" class="field-error">{{ createValidationErrors.executionDate }}</small>
+        </label>
+
         <div class="content-card" style="padding: 12px">
           <p class="eyebrow">Параметры заявки</p>
           <p v-if="currentMarketingSchema?.formNumber">Форма № {{ currentMarketingSchema.formNumber }}</p>

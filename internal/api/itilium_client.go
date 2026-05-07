@@ -87,6 +87,10 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 		return out
 	}
 
+	hydrateFromFindSC := func(summaries []models.TicketSummary) []models.TicketSummary {
+		return c.hydrateTicketSummariesFromFindSC(ctx, userID, summaries)
+	}
+
 	// 1С подтвердил контракт list_sc: id + sc_number, где sc_number — номера через ';'.
 	// Это «обогащение» списка темами/статусами; при сбое публикации (500, смена контракта) остаёмся на номерах из find_employee.
 	form := url.Values{}
@@ -101,7 +105,7 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 			"user_id", userID,
 			"request_id", middleware.RequestIDFromContext(ctx),
 		)
-		return summaryFromProfileNumbers(), nil
+		return hydrateFromFindSC(summaryFromProfileNumbers()), nil
 	}
 
 	response, err := parseListSCResponse(payload)
@@ -112,14 +116,14 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 			"user_id", userID,
 			"request_id", middleware.RequestIDFromContext(ctx),
 		)
-		return summaryFromProfileNumbers(), nil
+		return hydrateFromFindSC(summaryFromProfileNumbers()), nil
 	}
 
 	if len(response) == 0 {
-		return summaryFromProfileNumbers(), nil
+		return hydrateFromFindSC(summaryFromProfileNumbers()), nil
 	}
 
-	return response, nil
+	return hydrateFromFindSC(response), nil
 }
 
 func normalizeServiceCallNumbers(serviceCalls []string) []string {
@@ -215,6 +219,73 @@ func mapListSCItems(items []map[string]any) []models.TicketSummary {
 		})
 	}
 	return result
+}
+
+func (c *Client) hydrateTicketSummariesFromFindSC(ctx context.Context, userID string, summaries []models.TicketSummary) []models.TicketSummary {
+	if len(summaries) == 0 {
+		return summaries
+	}
+
+	out := make([]models.TicketSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		number := strings.TrimSpace(summary.Number)
+		if number == "" {
+			continue
+		}
+		if ticketSummaryHasListFields(summary) {
+			out = append(out, summary)
+			continue
+		}
+
+		detail, err := c.GetTicket(ctx, userID, number)
+		if err != nil {
+			c.logger.Warn(
+				"find_sc failed while hydrating my ticket summary",
+				"error", err,
+				"user_id", userID,
+				"ticket_number", number,
+				"request_id", middleware.RequestIDFromContext(ctx),
+			)
+			out = append(out, summary)
+			continue
+		}
+
+		out = append(out, ticketSummaryFromDetail(summary, detail))
+	}
+	return out
+}
+
+func ticketSummaryHasListFields(summary models.TicketSummary) bool {
+	title := strings.TrimSpace(summary.Title)
+	state := strings.TrimSpace(summary.State)
+	return title != "" &&
+		!strings.HasPrefix(title, "Заявка ") &&
+		state != "" &&
+		state != "Откройте карточку" &&
+		strings.TrimSpace(summary.CreationDate) != ""
+}
+
+func ticketSummaryFromDetail(fallback models.TicketSummary, detail models.TicketDetail) models.TicketSummary {
+	summary := fallback
+	if strings.TrimSpace(detail.Number) != "" {
+		summary.Number = detail.Number
+	}
+	if strings.TrimSpace(detail.Title) != "" {
+		summary.Title = detail.Title
+	}
+	if strings.TrimSpace(detail.State) != "" {
+		summary.State = detail.State
+	}
+	if strings.TrimSpace(detail.CreationDate) != "" {
+		summary.CreationDate = detail.CreationDate
+	}
+	if strings.TrimSpace(detail.Deadline) != "" {
+		summary.Deadline = detail.Deadline
+	}
+	if strings.TrimSpace(detail.ResponsibleTeam) != "" {
+		summary.ResponsibleTeam = detail.ResponsibleTeam
+	}
+	return summary
 }
 
 // FindEmployeeByIdentifier loads a user payload from the legacy ITILIUM find_employee endpoint.
@@ -925,35 +996,72 @@ func buildMarketingDescription(req models.CreateMarketingRequest) string {
 }
 
 func defaultMarketingFormSchema(formNumber string, serviceName string) models.MarketingFormSchema {
+	normalizedFormNumber := normalizeMarketingFormNumber(formNumber)
 	schema := models.MarketingFormSchema{
-		FormNumber: strings.TrimSpace(formNumber),
+		FormNumber: normalizedFormNumber,
 		Title:      strings.TrimSpace(serviceName),
 	}
-	switch strings.ToLower(strings.TrimSpace(serviceName)) {
-	case "дизайн":
+	// Номер формы приходит из 1С и точнее определяет набор обязательных полей, чем человекочитаемое название услуги.
+	switch normalizedFormNumber {
+	case "1":
 		schema.Fields = []models.MarketingFormField{
-			{Key: "LayoutName", Label: "Название макета", Type: "text", Required: true},
-			{Key: "Size", Label: "Размеры", Type: "text", Required: true},
-			{Key: "ForWhat", Label: "Для чего", Type: "text", Required: true},
+			{Key: "LayoutName", Label: "Название макета (баннер, афиша)", Type: "text", Required: true},
+			{Key: "Size", Label: "Размеры (в мм или dpi)", Type: "text", Required: true},
+			{Key: "ForWhat", Label: "Для чего (печать, веб версия)", Type: "text", Required: true},
 			{Key: "RequiredText", Label: "Обязательный текст", Type: "textarea", Required: true},
-			{Key: "LayoutFormats", Label: "Форматы предоставления макета", Type: "text", Required: true},
-			{Key: "LinkToFoto", Label: "Ссылка на фото", Type: "text", Required: false},
-			{Key: "LinkToExamples", Label: "Ссылка на примеры", Type: "text", Required: false},
+			{Key: "LayoutFormats", Label: "Форматы представления макета (pdf, png, psd, tiff, crd)", Type: "text", Required: true},
+			{Key: "LinkToFoto", Label: "Ссылка на обязательные фотоматериалы (при наличии)", Type: "text", Required: false},
+			{Key: "LinkToExamples", Label: "Ссылки на примеры, референсы", Type: "text", Required: false},
 		}
-	case "мероприятие":
+	case "2":
 		schema.Fields = []models.MarketingFormField{
 			{Key: "ThemeEvent", Label: "Тема мероприятия", Type: "text", Required: true},
 			{Key: "Description", Label: "Описание", Type: "textarea", Required: true},
 			{Key: "Budget", Label: "Бюджет", Type: "text", Required: true},
-			{Key: "LinkToFoto", Label: "Ссылка на фото", Type: "text", Required: false},
-			{Key: "LinkToExamples", Label: "Ссылка на примеры", Type: "text", Required: false},
+			{Key: "FreeText", Label: "Свободное текстовое поле", Type: "textarea", Required: false},
+		}
+	case "3":
+		schema.Fields = []models.MarketingFormField{
+			{Key: "Description", Label: "Свободное текстовое поле", Type: "textarea", Required: true},
 		}
 	default:
-		schema.Fields = []models.MarketingFormField{
-			{Key: "Description", Label: "Описание", Type: "textarea", Required: true},
+		switch strings.ToLower(strings.TrimSpace(serviceName)) {
+		case "дизайн":
+			schema.Fields = []models.MarketingFormField{
+				{Key: "LayoutName", Label: "Название макета (баннер, афиша)", Type: "text", Required: true},
+				{Key: "Size", Label: "Размеры (в мм или dpi)", Type: "text", Required: true},
+				{Key: "ForWhat", Label: "Для чего (печать, веб версия)", Type: "text", Required: true},
+				{Key: "RequiredText", Label: "Обязательный текст", Type: "textarea", Required: true},
+				{Key: "LayoutFormats", Label: "Форматы представления макета (pdf, png, psd, tiff, crd)", Type: "text", Required: true},
+				{Key: "LinkToFoto", Label: "Ссылка на обязательные фотоматериалы (при наличии)", Type: "text", Required: false},
+				{Key: "LinkToExamples", Label: "Ссылки на примеры, референсы", Type: "text", Required: false},
+			}
+		case "мероприятие":
+			schema.Fields = []models.MarketingFormField{
+				{Key: "ThemeEvent", Label: "Тема мероприятия", Type: "text", Required: true},
+				{Key: "Description", Label: "Описание", Type: "textarea", Required: true},
+				{Key: "Budget", Label: "Бюджет", Type: "text", Required: true},
+				{Key: "FreeText", Label: "Свободное текстовое поле", Type: "textarea", Required: false},
+			}
+		default:
+			schema.Fields = []models.MarketingFormField{
+				{Key: "Description", Label: "Свободное текстовое поле", Type: "textarea", Required: true},
+			}
 		}
 	}
 	return schema
+}
+
+func normalizeMarketingFormNumber(value string) string {
+	normalized := strings.TrimSpace(strings.TrimSuffix(value, ".0"))
+	if normalized == "" {
+		return ""
+	}
+	withoutLeadingZeros := strings.TrimLeft(normalized, "0")
+	if withoutLeadingZeros == "" {
+		return "0"
+	}
+	return withoutLeadingZeros
 }
 
 func ticketDetailCreateSCFallback(req models.CreateTicketRequest) models.TicketDetail {

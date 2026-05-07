@@ -236,8 +236,13 @@ func (s *TicketService) CreateMarketingRequest(ctx context.Context, request mode
 	if len(request.FormData) == 0 {
 		return models.TicketDetail{}, errors.New("form data is required")
 	}
+	if strings.TrimSpace(request.Subdivision) == "" {
+		return models.TicketDetail{}, errors.New("subdivision is required")
+	}
+	if strings.TrimSpace(request.ExecutionDate) == "" {
+		return models.TicketDetail{}, errors.New("execution date is required")
+	}
 
-	// Subdivision/ExecutionDate временно не требуем: проверяем live-контракт 1С без этих полей на UI.
-	// Если 1С вернёт ошибку обязательности, вернём поля или согласуем backend-default.
+	// Общие поля маркетинговой формы обязательны для всех типов: без них 1С создаёт неполную заявку.
 	return s.client.CreateMarketingRequest(ctx, request)
 }

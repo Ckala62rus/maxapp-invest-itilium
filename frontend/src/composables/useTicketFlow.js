@@ -41,9 +41,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   // The responsible selector keeps the chosen ITILIUM assignee id before submit.
   const selectedResponsibleId = ref('')
 
-  // Форма создания заявки: UI показывает только тип, тему/описание и вложения.
-  // department/executionDate оставляем в модели как технические поля: сейчас отправляем их пустыми,
-  // чтобы проверить live-контракт 1С без лишних полей на экране.
+  // Форма создания заявки: маркетинговый поток использует department/executionDate как обязательные общие поля.
   const createTicketForm = ref({
     requestType: defaultRequestType,
     title: '',
@@ -269,7 +267,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       createTicketForm.value.title,
       createTicketForm.value.description,
       createTicketForm.value.department,
-      createTicketForm.value.executionDate
+      createTicketForm.value.executionDate,
+      selectedMarketingService.value?.code,
+      JSON.stringify(marketingFormData.value)
     ],
     () => {
       if (createValidationStarted.value) {
@@ -365,8 +365,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     if (!selectedMarketingService.value && marketingServices.value.length > 0) {
       selectedMarketingService.value = marketingServices.value[0]
     }
-    if (!createTicketForm.value.department && marketingSubdivisions.value.length > 0) {
-      createTicketForm.value.department = marketingSubdivisions.value[0]?.name || ''
+    if (marketingSubdivisions.value.length > 0) {
+      const selectedDepartment = String(createTicketForm.value.department || '').trim()
+      const hasSelectedDepartment = marketingSubdivisions.value.some((item) => item?.name === selectedDepartment)
+      if (!hasSelectedDepartment) {
+        createTicketForm.value.department = marketingSubdivisions.value[0]?.name || ''
+      }
     }
   }
 
@@ -401,9 +405,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       ? await store.dispatch(ticketActionTypes.createMarketingRequest, {
         serviceCode: selectedMarketingService.value?.code || '',
         formNumber: selectedMarketingService.value?.formNumber || '',
-        // Эти поля скрыты в UI: отправляем пустые значения и проверяем, примет ли их live-контракт 1С.
-        subdivision: '',
-        executionDate: '',
+        subdivision: createTicketForm.value.department,
+        executionDate: createTicketForm.value.executionDate,
         withoutDate: false,
         formData: marketingFormData.value,
         attachmentFiles: createTicketForm.value.attachmentFiles || []
@@ -656,15 +659,15 @@ function validateCreateTicketForm(form, selectedMarketingService, marketingFormD
   if (!String(form.requestType || '').trim()) {
     errors.requestType = 'Выберите тип заявки.'
   }
-  if (!String(form.title || '').trim()) {
-    errors.title = 'Укажите краткую тему.'
-  }
-  if (!String(form.description || '').trim()) {
-    errors.description = 'Добавьте подробное описание.'
-  }
   if (form.requestType === 'Маркетинговая заявка') {
     if (!selectedMarketingService?.code) {
       errors.serviceCode = 'Выберите тип маркетинговой заявки.'
+    }
+    if (!String(form.department || '').trim()) {
+      errors.department = 'Выберите подразделение.'
+    }
+    if (!String(form.executionDate || '').trim()) {
+      errors.executionDate = 'Укажите дату исполнения.'
     }
 
     const requiredFields = selectedMarketingService?.formSchema?.fields?.filter((field) => field.required) || []
@@ -673,6 +676,13 @@ function validateCreateTicketForm(form, selectedMarketingService, marketingFormD
         errors[`form_${field.key}`] = `Заполните поле «${field.label}».`
       }
     })
+  } else {
+    if (!String(form.title || '').trim()) {
+      errors.title = 'Укажите краткую тему.'
+    }
+    if (!String(form.description || '').trim()) {
+      errors.description = 'Добавьте подробное описание.'
+    }
   }
 
   return errors
@@ -693,6 +703,9 @@ function normalizeTicketCreationDate(ticket) {
 
 function normalizeTicketState(state) {
   const text = String(state || '').trim()
+  if (text === 'Откройте карточку') {
+    return 'Статус не загружен'
+  }
   return text || 'Статус не загружен'
 }
 
