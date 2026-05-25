@@ -4,6 +4,7 @@ FROM golang:1.25.5-alpine AS builder
 WORKDIR /src
 
 COPY go.mod ./
+COPY go.sum ./
 COPY internal ./internal
 COPY cmd ./cmd
 
