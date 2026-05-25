@@ -142,12 +142,14 @@ docker ps
 
 ## 5. Установка Docker logging driver для Loki
 
-Сервис бэкенда использует Docker logging driver `loki`, поэтому установите плагин до запуска production-стека:
+Сервис бэкенда использует Docker logging driver `loki`, поэтому установите плагин до запуска production-стека. Для обычного Ubuntu-сервера `x86_64` используйте тег `amd64`:
 
 ```bash
-sudo docker plugin install grafana/loki-docker-driver:3.3.2 --alias loki --grant-all-permissions
+sudo docker plugin install grafana/loki-docker-driver:3.7.2-amd64 --alias loki --grant-all-permissions
 sudo docker plugin ls
 ```
+
+Если `uname -m` показывает `aarch64` или `arm64`, используйте тег `3.7.2-arm64`.
 
 Если плагин уже существует, убедитесь, что он включен:
 
@@ -176,35 +178,40 @@ CERT_DOMAIN=maxbot.fpkinvest.ru
 CERT_DOMAIN=https://maxbot.fpkinvest.ru/
 ```
 
-Nginx внутри контейнера ожидает файлы по пути `/etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem` и `/etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem`. Это просто ожидаемая структура каталогов; сами сертификаты могут быть выданы не Let's Encrypt.
+Nginx внутри контейнера ожидает файлы по пути `/etc/nginx/certs/fullchain.pem` и `/etc/nginx/certs/privkey.pem`. В `docker-compose.yml` туда монтируется серверный каталог проекта `./ssl`.
 
-Создайте каталог под сертификаты:
-
-```bash
-sudo mkdir -p /etc/letsencrypt/live/maxbot.fpkinvest.ru
-```
-
-Скопируйте выданные администратором файлы в этот каталог. Ниже пример: замените имена исходных файлов на реальные:
+Создайте каталог под сертификаты рядом с проектом:
 
 ```bash
-sudo cp /path/to/admin/fullchain.pem /etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem
-sudo cp /path/to/admin/privkey.pem /etc/letsencrypt/live/maxbot.fpkinvest.ru/privkey.pem
+cd /opt/docker-shared/maxapp-invest-itilium
+sudo mkdir -p ssl
 ```
+
+Скопируйте выданные администратором файлы в этот каталог. Для текущего сервера они уже лежат здесь:
+
+```bash
+ls -lah /opt/docker-shared/maxapp-invest-itilium/ssl
+```
+
+Минимально нужны:
+
+- `fullchain.pem`
+- `privkey.pem`
 
 Выставьте владельца и права:
 
 ```bash
-sudo chown root:root /etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem
-sudo chown root:root /etc/letsencrypt/live/maxbot.fpkinvest.ru/privkey.pem
-sudo chmod 644 /etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem
-sudo chmod 600 /etc/letsencrypt/live/maxbot.fpkinvest.ru/privkey.pem
+sudo chown root:root /opt/docker-shared/maxapp-invest-itilium/ssl/fullchain.pem
+sudo chown root:root /opt/docker-shared/maxapp-invest-itilium/ssl/privkey.pem
+sudo chmod 644 /opt/docker-shared/maxapp-invest-itilium/ssl/fullchain.pem
+sudo chmod 600 /opt/docker-shared/maxapp-invest-itilium/ssl/privkey.pem
 ```
 
 Проверьте сертификат и ключ:
 
 ```bash
-sudo openssl x509 -in /etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem -noout -subject -issuer -dates
-sudo openssl rsa -in /etc/letsencrypt/live/maxbot.fpkinvest.ru/privkey.pem -check -noout
+sudo openssl x509 -in /opt/docker-shared/maxapp-invest-itilium/ssl/fullchain.pem -noout -subject -issuer -dates
+sudo openssl rsa -in /opt/docker-shared/maxapp-invest-itilium/ssl/privkey.pem -check -noout
 ```
 
 Если `openssl` не установлен, выполните `sudo apt-get install -y openssl`.
@@ -325,18 +332,16 @@ sudo docker compose --env-file .env config > /tmp/maxapp-compose.yml
 
 ## 10. Проверка файлов сертификата перед запуском
 
-Убедитесь, что файлы лежат в каталоге, который соответствует `CERT_DOMAIN` из `.env`:
+Убедитесь, что файлы лежат в каталоге `ssl` рядом с `docker-compose.yml`:
 
 ```bash
-sudo ls -la /etc/letsencrypt/live/maxbot.fpkinvest.ru/
+sudo ls -la /opt/docker-shared/maxapp-invest-itilium/ssl/
 ```
 
 В каталоге должны быть минимум два файла:
 
 - `fullchain.pem`
 - `privkey.pem`
-
-Если домен другой, замените `maxbot.fpkinvest.ru` на реальный домен из `CERT_DOMAIN`.
 
 ## 11. Запуск production-стека
 
@@ -433,12 +438,12 @@ sudo docker compose --env-file .env logs -f web
 
 ## 14. Замена сертификатов
 
-Когда администратор выдаст новые файлы сертификата, замените `fullchain.pem` и `privkey.pem` в `/etc/letsencrypt/live/maxbot.fpkinvest.ru/`.
+Когда администратор выдаст новые файлы сертификата, замените `fullchain.pem` и `privkey.pem` в `/opt/docker-shared/maxapp-invest-itilium/ssl/`.
 
 После замены проверьте сертификат:
 
 ```bash
-sudo openssl x509 -in /etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem -noout -subject -issuer -dates
+sudo openssl x509 -in /opt/docker-shared/maxapp-invest-itilium/ssl/fullchain.pem -noout -subject -issuer -dates
 ```
 
 Затем перезагрузите nginx внутри контейнера:
@@ -470,8 +475,8 @@ sudo docker system prune -f
 Сейчас в production нет базы данных Postgres. Сохраняйте эти ресурсы на уровне хоста:
 
 - `/opt/docker-shared/maxapp-invest-itilium/.env`
-- `/etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem`
-- `/etc/letsencrypt/live/maxbot.fpkinvest.ru/privkey.pem`
+- `/opt/docker-shared/maxapp-invest-itilium/ssl/fullchain.pem`
+- `/opt/docker-shared/maxapp-invest-itilium/ssl/privkey.pem`
 - Том Grafana, если дашборды настраивались вручную:
 
 ```bash
@@ -484,10 +489,10 @@ sudo docker volume ls | grep grafana
 
 Если HTTPS nginx не запускается:
 
-- Проверьте файлы сертификата: `sudo ls -la /etc/letsencrypt/live/maxbot.fpkinvest.ru/`.
-- Проверьте, что `CERT_DOMAIN` в `.env` точно совпадает с именем каталога сертификата.
+- Проверьте файлы сертификата: `sudo ls -la /opt/docker-shared/maxapp-invest-itilium/ssl/`.
+- Проверьте, что `CERT_DOMAIN` в `.env` содержит только домен.
 - Проверьте, что в `CERT_DOMAIN` нет `https://` и завершающего `/`.
-- Проверьте сертификат: `sudo openssl x509 -in /etc/letsencrypt/live/maxbot.fpkinvest.ru/fullchain.pem -noout -subject -issuer -dates`.
+- Проверьте сертификат: `sudo openssl x509 -in /opt/docker-shared/maxapp-invest-itilium/ssl/fullchain.pem -noout -subject -issuer -dates`.
 - Прочитайте логи nginx: `sudo docker compose --env-file .env logs web`.
 
 Если бэкенд завершается:
@@ -498,7 +503,7 @@ sudo docker volume ls | grep grafana
 Если Docker сообщает о неизвестном logging driver `loki`:
 
 ```bash
-sudo docker plugin install grafana/loki-docker-driver:3.3.2 --alias loki --grant-all-permissions
+sudo docker plugin install grafana/loki-docker-driver:3.7.2-amd64 --alias loki --grant-all-permissions
 sudo docker plugin enable loki
 sudo docker compose --env-file .env up -d
 ```
