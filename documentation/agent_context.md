@@ -38,6 +38,7 @@
 - Dev/prod configs set outbound ITILIUM timeout to `50s` because ticket creation and marketing requests can wait on slow 1C processing.
 - Production deployment now uses nginx HTTPS with host-mounted certificate storage from the project-local `ssl/` directory (`fullchain.pem` and `privkey.pem`), plus closed internal backend networking. Certificates are provided by the administrator rather than issued through Certbot/Let's Encrypt. Postgres is intentionally removed from the production compose because runtime code currently uses `MemoryUserRepository`, Redis cache and ITILIUM as the source of truth; migrations remain dev/tooling scaffolding only.
 - `documentation/production_deployment.md` now contains a detailed Ubuntu production runbook from Docker/Compose/Loki driver installation through administrator-provided TLS certificate placement, `.env`, smoke checks, MAX connection, certificate replacement, updates, backups and troubleshooting. The production app directory is documented as `/opt/docker-shared/maxapp-invest-itilium` by default, based on the admin-provided shared Docker directory; Docker commands are written for sudo-based operation.
+- Production frontend API calls use relative `/api/*` URLs by default so nginx proxies them to the backend; `VITE_PUBLIC_API_BASE_URL` remains an explicit override only for non-standard deployments.
 
 ## Important Decisions
 

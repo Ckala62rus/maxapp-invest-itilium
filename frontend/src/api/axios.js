@@ -5,14 +5,12 @@ import { getItem, removeItem } from '@/helpers/persistenceStorage'
 const env = import.meta.env
 const debugUserId = env.VITE_DEBUG_USER_ID || ''
 
-// В DEV без `VITE_PUBLIC_API_BASE_URL` используем относительный origin (Vite `-5173`), а `/api/*` проксируются на backend `:3000` (см. `vite.config.js`).
-// Явный `http://127.0.0.1:3000` — только когда задан в `.env` (обход без proxy или нестандартный порт API).
+// Без явного VITE_PUBLIC_API_BASE_URL используем относительный origin:
+// в DEV `/api/*` проксирует Vite, в production `/api/*` проксирует nginx.
 axios.defaults.baseURL =
   typeof env.VITE_PUBLIC_API_BASE_URL === 'string' && env.VITE_PUBLIC_API_BASE_URL.trim() !== ''
     ? env.VITE_PUBLIC_API_BASE_URL
-    : env.DEV
-      ? ''
-      : 'http://127.0.0.1:3000'
+    : ''
 
 // Перед каждым запросом подмешиваем токен из storage; в DEV без токена — опционально X-User-ID для отладки.
 axios.interceptors.request.use((config) => {
