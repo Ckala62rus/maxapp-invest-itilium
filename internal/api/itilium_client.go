@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	responsibleTicketHydrationConcurrency = 6
-	responsibleTicketHydrationTimeout     = 5 * time.Second
+	responsibleTicketHydrationConcurrency  = 6
+	responsibleTicketHydrationTimeout      = 5 * time.Second
+	responsibleTicketHydrationTotalTimeout = 12 * time.Second
 )
 
 // Client implements the outbound ITILIUM HTTP client.
@@ -372,7 +373,10 @@ func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]m
 	}
 
 	// По уточненному контракту карточки из ответственности запрашиваем через find_sc для каждого номера.
-	// Делаем это параллельно и с коротким per-card timeout: одна зависшая карточка не должна держать весь список минуту.
+	// Ограничиваем и одну карточку, и всю пачку: при большом списке backend должен успеть отдать частичный результат до HTTP write_timeout.
+	hydrationCtx, cancelHydration := context.WithTimeout(ctx, responsibleTicketHydrationTotalTimeout)
+	defer cancelHydration()
+
 	summaries := make([]models.TicketSummary, len(numbers))
 	sem := make(chan struct{}, responsibleTicketHydrationConcurrency)
 	var wg sync.WaitGroup
@@ -391,11 +395,11 @@ func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]m
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
-			case <-ctx.Done():
+			case <-hydrationCtx.Done():
 				return
 			}
 
-			ticketCtx, cancel := context.WithTimeout(ctx, responsibleTicketHydrationTimeout)
+			ticketCtx, cancel := context.WithTimeout(hydrationCtx, responsibleTicketHydrationTimeout)
 			defer cancel()
 
 			detail, err := c.GetTicket(ticketCtx, userID, number)
@@ -422,6 +426,16 @@ func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]m
 		}(index, number)
 	}
 	wg.Wait()
+
+	if errors.Is(hydrationCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		c.logger.Warn(
+			"responsible ticket summary hydration timed out",
+			"ticket_count", len(numbers),
+			"timeout_ms", responsibleTicketHydrationTotalTimeout.Milliseconds(),
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+	}
 
 	return summaries, nil
 }
