@@ -40,6 +40,7 @@
 - `documentation/production_deployment.md` now contains a detailed Ubuntu production runbook from Docker/Compose/Loki driver installation through administrator-provided TLS certificate placement, `.env`, smoke checks, MAX connection, certificate replacement, updates, backups and troubleshooting. The production app directory is documented as `/opt/docker-shared/maxapp-invest-itilium` by default, based on the admin-provided shared Docker directory; Docker commands are written for sudo-based operation.
 - Production frontend API calls use relative `/api/*` URLs by default so nginx proxies them to the backend; `VITE_PUBLIC_API_BASE_URL` remains an explicit override only for non-standard deployments.
 - Pending registration profiles are no longer treated as final cache hits: `GET /api/v1/users/me` rechecks ITILIUM so users added after submitting a registration form can move from pending/registration-required to found without restarting the backend.
+- Production compose now passes `LOG_LEVEL`/`LOG_FORMAT` from `.env` into the backend container, so setting `LOG_LEVEL=debug` and recreating backend enables debug logs.
 
 ## Important Decisions
 

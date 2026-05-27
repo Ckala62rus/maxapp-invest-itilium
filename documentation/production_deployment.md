@@ -302,6 +302,8 @@ AUTH_ACCESS_TOKEN_SECRET=replace-with-long-random-secret
 AUTH_ACCESS_TOKEN_TTL=12h
 AUTH_MAX_INIT_DATA_TTL=10m
 AUTH_ALLOW_DEBUG_IDENTITY_HEADERS=false
+
+LOG_LEVEL=info
 ```
 
 Сгенерируйте надежный `AUTH_ACCESS_TOKEN_SECRET`. Если `openssl` не установлен, сначала выполните `sudo apt-get install -y openssl`:
@@ -499,6 +501,19 @@ sudo docker volume ls | grep grafana
 
 - Проверьте обязательные значения окружения: `ITILIUM_BASE_URL`, `ITILIUM_LOGIN`, `ITILIUM_PASSWORD`, `MAX_BOT_TOKEN`, `AUTH_ACCESS_TOKEN_SECRET`.
 - Прочитайте логи: `sudo docker compose --env-file .env logs --tail=200 backend`.
+
+Если нужно включить подробные debug-логи, установите в `.env`:
+
+```env
+LOG_LEVEL=debug
+```
+
+Затем пересоздайте backend:
+
+```bash
+sudo docker compose --env-file .env up -d --force-recreate --no-deps backend
+sudo docker compose --env-file .env logs --tail=50 backend
+```
 
 Если Docker сообщает о неизвестном logging driver `loki`:
 
