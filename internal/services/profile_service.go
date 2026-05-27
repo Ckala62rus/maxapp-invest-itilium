@@ -47,10 +47,11 @@ func (s *ProfileService) GetProfile(ctx context.Context, userID string) (models.
 		return models.UserProfile{}, errors.New("user id is required")
 	}
 
-	// Локальный кэш: если уже сохранён финальный профиль (сотрудник в ITILIUM подтверждён)
-	// или известно, что заявка на регистрацию висит на модерации — не дергаем ITILIUM повторно.
-	if profile, ok := s.repository.GetByUserID(ctx, userID); ok && ((profile.EmployeeFound && !profile.RegistrationRequired) || profile.RegistrationPending) {
-		return profile, nil
+	// Локальный кэш используем только для уже подтверждённого профиля.
+	// Статус "заявка на рассмотрении" перепроверяем в ITILIUM: сотрудника могли добавить после отправки анкеты.
+	storedProfile, hasStoredProfile := s.repository.GetByUserID(ctx, userID)
+	if hasStoredProfile && storedProfile.EmployeeFound && !storedProfile.RegistrationRequired {
+		return storedProfile, nil
 	}
 
 	// Живой поиск в ITILIUM по MAX user id (если интеграция подключена).
@@ -61,6 +62,9 @@ func (s *ProfileService) GetProfile(ctx context.Context, userID string) (models.
 		if err != nil {
 			// Ошибка с HTTP-статусом: часть кодов переводим в понятные для UI состояния (регистрация / ожидание).
 			if profile, ok := profileFromLookupError(userID, err); ok {
+				if hasStoredProfile && storedProfile.RegistrationPending && profile.RegistrationRequired {
+					return storedProfile, nil
+				}
 				return profile, nil
 			}
 			// Неизвестная ошибка — пробрасываем наверх.
