@@ -41,6 +41,7 @@
 - Production frontend API calls use relative `/api/*` URLs by default so nginx proxies them to the backend; `VITE_PUBLIC_API_BASE_URL` remains an explicit override only for non-standard deployments.
 - Pending registration profiles are no longer treated as final cache hits: `GET /api/v1/users/me` rechecks ITILIUM so users added after submitting a registration form can move from pending/registration-required to found without restarting the backend.
 - Production compose now passes `LOG_LEVEL`/`LOG_FORMAT` from `.env` into the backend container, so setting `LOG_LEVEL=debug` and recreating backend enables debug logs.
+- Responsible ticket lists now hydrate `find_sc` summaries concurrently with a short per-card timeout, preventing one slow ITILIUM card from blocking `/api/v1/tickets/responsible` for ~50s.
 
 ## Important Decisions
 

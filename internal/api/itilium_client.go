@@ -15,11 +15,17 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/config"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/middleware"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
+)
+
+const (
+	responsibleTicketHydrationConcurrency = 6
+	responsibleTicketHydrationTimeout     = 5 * time.Second
 )
 
 // Client implements the outbound ITILIUM HTTP client.
@@ -366,42 +372,58 @@ func (c *Client) ListResponsibleTickets(ctx context.Context, userID string) ([]m
 	}
 
 	// По уточненному контракту карточки из ответственности запрашиваем через find_sc для каждого номера.
-	summaries := make([]models.TicketSummary, 0, len(numbers))
-	for _, number := range numbers {
-		detail, err := c.GetTicket(ctx, userID, number)
-		if err != nil {
-			// Отдельная карточка может быть недоступна — в списке оставляем номер без падения всего запроса.
-			summaries = append(summaries, models.TicketSummary{
-				Number: number,
-				Title:  "Заявка " + number,
-				State:  "Откройте карточку",
-			})
-			continue
-		}
+	// Делаем это параллельно и с коротким per-card timeout: одна зависшая карточка не должна держать весь список минуту.
+	summaries := make([]models.TicketSummary, len(numbers))
+	sem := make(chan struct{}, responsibleTicketHydrationConcurrency)
+	var wg sync.WaitGroup
 
-		summaries = append(summaries, models.TicketSummary{
-			Number:          detail.Number,
-			Title:           detail.Title,
-			State:           detail.State,
-			CreationDate:    detail.CreationDate,
-			Deadline:        detail.Deadline,
-			ResponsibleTeam: detail.ResponsibleTeam,
-		})
-	}
-	if len(summaries) > 0 {
-		return summaries, nil
-	}
-
-	// На случай, если все find_sc вернули ошибки, показываем хотя бы список номеров.
-	fallback := make([]models.TicketSummary, 0, len(numbers))
-	for _, number := range numbers {
-		fallback = append(fallback, models.TicketSummary{
+	for index, number := range numbers {
+		summaries[index] = models.TicketSummary{
 			Number: number,
 			Title:  "Заявка " + number,
 			State:  "Откройте карточку",
-		})
+		}
+
+		wg.Add(1)
+		go func(index int, number string) {
+			defer wg.Done()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+
+			ticketCtx, cancel := context.WithTimeout(ctx, responsibleTicketHydrationTimeout)
+			defer cancel()
+
+			detail, err := c.GetTicket(ticketCtx, userID, number)
+			if err != nil {
+				// Отдельная карточка может быть недоступна — в списке оставляем номер без падения всего запроса.
+				c.logger.Warn(
+					"find_sc failed while hydrating responsible ticket summary",
+					"number", number,
+					"error", err,
+					"request_id", middleware.RequestIDFromContext(ctx),
+					"user_id", middleware.UserIDFromContext(ctx),
+				)
+				return
+			}
+
+			summaries[index] = models.TicketSummary{
+				Number:          detail.Number,
+				Title:           detail.Title,
+				State:           detail.State,
+				CreationDate:    detail.CreationDate,
+				Deadline:        detail.Deadline,
+				ResponsibleTeam: detail.ResponsibleTeam,
+			}
+		}(index, number)
 	}
-	return fallback, nil
+	wg.Wait()
+
+	return summaries, nil
 }
 
 func (c *Client) doMultipartFormPostBytes(ctx context.Context, path string, form url.Values) ([]byte, error) {
