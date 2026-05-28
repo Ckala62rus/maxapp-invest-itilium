@@ -83,7 +83,7 @@ func (s *TicketService) GetTicket(ctx context.Context, userID string, number str
 		return models.TicketDetail{}, errors.New("ticket number is required")
 	}
 
-	cacheKey := fmt.Sprintf("ticket:%s:%s", userID, number)
+	cacheKey := ticketCacheKey(userID, number)
 
 	// Сначала пробуем Redis (если включён): карточка заявки меняется реже, чем её открывают.
 	if s.cache != nil {
@@ -142,8 +142,13 @@ func (s *TicketService) AddComment(ctx context.Context, number string, request m
 		return models.TicketDetail{}, errors.New("message or attachment is required")
 	}
 
-	// Ответ — полная карточка; кэш по этому номеру устареет по TTL сам.
-	return s.client.AddComment(ctx, number, request)
+	// После мутации сбрасываем кэш карточки: следующий экран должен увидеть актуальные данные, а не старый TTL.
+	ticket, err := s.client.AddComment(ctx, number, request)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	s.invalidateTicketCache(ctx, request.UserID, number)
+	return ticket, nil
 }
 
 // ChangeStatus performs a workflow transition.
@@ -159,7 +164,12 @@ func (s *TicketService) ChangeStatus(ctx context.Context, number string, request
 		return models.TicketDetail{}, errors.New("comment is required for state 'В ожидании ответа'")
 	}
 
-	return s.client.ChangeStatus(ctx, number, request)
+	ticket, err := s.client.ChangeStatus(ctx, number, request)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	s.invalidateTicketCache(ctx, request.UserID, number)
+	return ticket, nil
 }
 
 // ChangeResponsible assigns the ticket to a new person.
@@ -171,8 +181,13 @@ func (s *TicketService) ChangeResponsible(ctx context.Context, number string, re
 		return models.TicketDetail{}, errors.New("responsible id is required")
 	}
 
-	// Смена ответственного в ITILIUM; возвращается обновлённая карточка.
-	return s.client.ChangeResponsible(ctx, number, request)
+	// Смена ответственного в ITILIUM; после успеха инвалидируем старую карточку в Redis.
+	ticket, err := s.client.ChangeResponsible(ctx, number, request)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	s.invalidateTicketCache(ctx, request.UserID, number)
+	return ticket, nil
 }
 
 // ListResponsibleOptions returns available assignees for the ticket.
@@ -200,7 +215,24 @@ func (s *TicketService) ConfirmTicket(ctx context.Context, number string, reques
 		return models.TicketDetail{}, errors.New("comment is required for ratings 0 through 2")
 	}
 
-	return s.client.ConfirmTicket(ctx, number, request)
+	ticket, err := s.client.ConfirmTicket(ctx, number, request)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	s.invalidateTicketCache(ctx, request.UserID, number)
+	return ticket, nil
+}
+
+func ticketCacheKey(userID string, number string) string {
+	return fmt.Sprintf("ticket:%s:%s", userID, number)
+}
+
+func (s *TicketService) invalidateTicketCache(ctx context.Context, userID string, number string) {
+	if s.cache == nil {
+		return
+	}
+	// Ошибка Redis не должна ломать бизнес-операцию, потому что источник истины — ITILIUM.
+	_ = s.cache.Delete(ctx, ticketCacheKey(userID, number))
 }
 
 // ListMarketingServices returns available marketing service types for the current user.

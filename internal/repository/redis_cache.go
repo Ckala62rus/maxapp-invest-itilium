@@ -58,3 +58,12 @@ func (c *RedisCache) SetJSON(ctx context.Context, key string, value any, ttl tim
 
 	return c.client.Set(ctx, key, data, ttl).Err()
 }
+
+// Delete removes one or more cache keys from Redis.
+func (c *RedisCache) Delete(ctx context.Context, keys ...string) error {
+	if !c.enabled || len(keys) == 0 {
+		return nil
+	}
+
+	return c.client.Del(ctx, keys...).Err()
+}

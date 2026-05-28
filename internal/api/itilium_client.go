@@ -1405,6 +1405,19 @@ func (c *Client) ChangeStatus(ctx context.Context, number string, request models
 			State:  request.State,
 		}, nil
 	}
+	if requestedState := strings.TrimSpace(request.State); requestedState != "" && strings.TrimSpace(detail.State) != requestedState {
+		// 1С иногда подтверждает change_state_sc, но мгновенный find_sc ещё отдаёт старую карточку.
+		// Для UI возвращаем подтверждённый целевой статус, а следующий refresh подтянет окончательную карточку.
+		c.logger.Warn(
+			"find_sc returned stale state after change_state_sc",
+			"number", number,
+			"old_state", detail.State,
+			"new_state", requestedState,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		detail.State = requestedState
+	}
 	return detail, nil
 }
 
