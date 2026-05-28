@@ -42,6 +42,7 @@
 - Pending registration profiles are no longer treated as final cache hits: `GET /api/v1/users/me` rechecks ITILIUM so users added after submitting a registration form can move from pending/registration-required to found without restarting the backend.
 - Production compose now passes `LOG_LEVEL`/`LOG_FORMAT` from `.env` into the backend container, so setting `LOG_LEVEL=debug` and recreating backend enables debug logs.
 - Responsible ticket lists now hydrate `find_sc` summaries concurrently with both per-card and total hydration timeouts. If a user has many responsible tickets, the backend returns a partial enriched list before HTTP `write_timeout`; not-yet-enriched items remain as fallback summaries and can still be opened individually.
+- Regular ticket creation through `/create_sc` now sends only the user's description text in the `description` field. Request type, department and execution date are no longer appended to the regular ticket description; marketing-specific fields remain isolated in `/create_sc_Marketing`.
 
 ## Important Decisions
 

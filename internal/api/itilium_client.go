@@ -833,25 +833,9 @@ func marketingCreateSCFieldName(key string) string {
 }
 
 func buildCreateSCLongDescription(req models.CreateTicketRequest) string {
-	var b strings.Builder
-	b.WriteString(strings.TrimSpace(req.Description))
-	var extra []string
-	if t := strings.TrimSpace(req.RequestType); t != "" {
-		extra = append(extra, "Тип: "+t)
-	}
-	if t := strings.TrimSpace(req.Department); t != "" {
-		extra = append(extra, "Подразделение: "+t)
-	}
-	if t := strings.TrimSpace(req.ExecutionDate); t != "" {
-		extra = append(extra, "Исполнить до: "+t)
-	}
-	if len(extra) > 0 {
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
-		}
-		b.WriteString(strings.Join(extra, "\n"))
-	}
-	return b.String()
+	// Обычный create_sc ждёт в description только пользовательский текст.
+	// Тип, подразделение и срок остаются отдельной логикой маркетингового endpoint и не подмешиваются сюда.
+	return strings.TrimSpace(req.Description)
 }
 
 func parseCreateSCResponse(payload []byte, req models.CreateTicketRequest) (models.TicketDetail, error) {
