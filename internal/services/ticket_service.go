@@ -11,6 +11,8 @@ import (
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/repository"
 )
 
+const ticketMutationCacheTTL = 2 * time.Minute
+
 // ItiliumClient describes external ITILIUM calls consumed by the service layer.
 type ItiliumClient interface {
 	// FindEmployeeByIdentifier requests a raw employee payload from ITILIUM.
@@ -64,7 +66,11 @@ func (s *TicketService) ListMyTickets(ctx context.Context, userID string) ([]mod
 	}
 
 	// Проксируем в ITILIUM без локальной логики.
-	return s.client.ListMyTickets(ctx, userID)
+	tickets, err := s.client.ListMyTickets(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.applyCachedTicketSummaries(ctx, userID, tickets), nil
 }
 
 // ListResponsibleTickets returns tickets assigned to the current user.
@@ -74,7 +80,11 @@ func (s *TicketService) ListResponsibleTickets(ctx context.Context, userID strin
 	}
 
 	// Список заявок, где пользователь указан ответственным.
-	return s.client.ListResponsibleTickets(ctx, userID)
+	tickets, err := s.client.ListResponsibleTickets(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.applyCachedTicketSummaries(ctx, userID, tickets), nil
 }
 
 // GetTicket returns one ticket detail and caches it for repeated reads.
@@ -147,7 +157,7 @@ func (s *TicketService) AddComment(ctx context.Context, number string, request m
 	if err != nil {
 		return models.TicketDetail{}, err
 	}
-	s.invalidateTicketCache(ctx, request.UserID, number)
+	s.cacheMutatedTicket(ctx, request.UserID, ticket)
 	return ticket, nil
 }
 
@@ -168,7 +178,7 @@ func (s *TicketService) ChangeStatus(ctx context.Context, number string, request
 	if err != nil {
 		return models.TicketDetail{}, err
 	}
-	s.invalidateTicketCache(ctx, request.UserID, number)
+	s.cacheMutatedTicket(ctx, request.UserID, ticket)
 	return ticket, nil
 }
 
@@ -186,7 +196,7 @@ func (s *TicketService) ChangeResponsible(ctx context.Context, number string, re
 	if err != nil {
 		return models.TicketDetail{}, err
 	}
-	s.invalidateTicketCache(ctx, request.UserID, number)
+	s.cacheMutatedTicket(ctx, request.UserID, ticket)
 	return ticket, nil
 }
 
@@ -219,7 +229,7 @@ func (s *TicketService) ConfirmTicket(ctx context.Context, number string, reques
 	if err != nil {
 		return models.TicketDetail{}, err
 	}
-	s.invalidateTicketCache(ctx, request.UserID, number)
+	s.cacheMutatedTicket(ctx, request.UserID, ticket)
 	return ticket, nil
 }
 
@@ -227,12 +237,55 @@ func ticketCacheKey(userID string, number string) string {
 	return fmt.Sprintf("ticket:%s:%s", userID, number)
 }
 
-func (s *TicketService) invalidateTicketCache(ctx context.Context, userID string, number string) {
+func (s *TicketService) applyCachedTicketSummaries(ctx context.Context, userID string, tickets []models.TicketSummary) []models.TicketSummary {
+	if s.cache == nil || len(tickets) == 0 {
+		return tickets
+	}
+
+	out := make([]models.TicketSummary, len(tickets))
+	copy(out, tickets)
+
+	for index, ticket := range out {
+		if strings.TrimSpace(ticket.Number) == "" {
+			continue
+		}
+
+		var cached models.TicketDetail
+		ok, err := s.cache.GetJSON(ctx, ticketCacheKey(userID, ticket.Number), &cached)
+		if err != nil || !ok || strings.TrimSpace(cached.Number) == "" {
+			continue
+		}
+
+		// Сразу после мутации 1С может ещё отдавать старую карточку, поэтому поверх списка кладём краткий кэш.
+		if cached.Title != "" {
+			out[index].Title = cached.Title
+		}
+		if cached.State != "" {
+			out[index].State = cached.State
+		}
+		if cached.CreationDate != "" {
+			out[index].CreationDate = cached.CreationDate
+		}
+		if cached.Deadline != "" {
+			out[index].Deadline = cached.Deadline
+		}
+		if cached.ResponsibleTeam != "" {
+			out[index].ResponsibleTeam = cached.ResponsibleTeam
+		}
+	}
+
+	return out
+}
+
+func (s *TicketService) cacheMutatedTicket(ctx context.Context, userID string, ticket models.TicketDetail) {
 	if s.cache == nil {
 		return
 	}
-	// Ошибка Redis не должна ломать бизнес-операцию, потому что источник истины — ITILIUM.
-	_ = s.cache.Delete(ctx, ticketCacheKey(userID, number))
+	if strings.TrimSpace(ticket.Number) == "" {
+		return
+	}
+	// Короткий overlay нужен, чтобы UI не откатывался на stale-ответ find_sc сразу после успешной мутации.
+	_ = s.cache.SetJSON(ctx, ticketCacheKey(userID, ticket.Number), ticket, ticketMutationCacheTTL)
 }
 
 // ListMarketingServices returns available marketing service types for the current user.

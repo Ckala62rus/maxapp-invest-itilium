@@ -43,7 +43,7 @@
 - Production compose now passes `LOG_LEVEL`/`LOG_FORMAT` from `.env` into the backend container, so setting `LOG_LEVEL=debug` and recreating backend enables debug logs.
 - Responsible ticket lists now hydrate `find_sc` summaries concurrently with both per-card and total hydration timeouts. If a user has many responsible tickets, the backend returns a partial enriched list before HTTP `write_timeout`; not-yet-enriched items remain as fallback summaries and can still be opened individually.
 - Regular ticket creation through `/create_sc` now sends only the user's description text in the `description` field. Request type, department and execution date are no longer appended to the regular ticket description; marketing-specific fields remain isolated in `/create_sc_Marketing`.
-- Ticket mutations now invalidate the Redis ticket-detail cache after successful comments, status changes, responsible changes and rating confirmation. After successful `change_state_sc`, the backend returns the requested new state even when the immediate follow-up `find_sc` still reports the old state, and logs this as a stale 1C read.
+- Ticket mutations now write a short Redis overlay after successful comments, status changes, responsible changes and rating confirmation. Lists and details apply this overlay for a couple of minutes, so the UI does not immediately roll back to stale `find_sc` data after a successful `change_state_sc`; if 1C keeps returning the old state after the overlay expires, the issue is on the 1C side.
 
 ## Important Decisions
 
