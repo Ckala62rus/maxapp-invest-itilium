@@ -252,6 +252,7 @@ function openResponsibleTicketDetails(ticketNumber) {
           :is-registration-submitting="isRegistrationSubmitting"
           :registration-validation-started="registrationValidationStarted"
           :registration-validation-errors="registrationValidationErrors"
+          :show-debug-info="isDebugUiEnabled"
           @submit-registration="submitRegistration"
         />
 

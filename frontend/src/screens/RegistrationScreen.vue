@@ -40,6 +40,10 @@ defineProps({
   registrationValidationErrors: {
     type: Object,
     required: true
+  },
+  showDebugInfo: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -67,7 +71,7 @@ function submitRegistration() {
         <span class="status-pill info">MAX ID: {{ currentIdentity?.userId || currentUser?.userId || registrationForm.employeeNumber || 'не получен' }}</span>
         <span class="status-pill rose">{{ currentUser?.statusMessage || 'Пользователь не найден в ITILIUM.' }}</span>
       </div>
-      <div class="debug-panel">
+      <div v-if="showDebugInfo" class="debug-panel">
         <p><strong>window.WebApp:</strong> {{ maxBridgeState.isAvailable ? 'доступен' : 'недоступен' }}</p>
         <p><strong>initDataUnsafe.user.id:</strong> {{ rawInitDataUnsafeUserId || 'пусто' }}</p>
         <p><strong>initData length:</strong> {{ rawInitData.length }}</p>
