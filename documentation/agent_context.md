@@ -47,6 +47,7 @@
 - Production UI no longer shows prototype state samples, summary counter cards, or MAX bridge debug data. Home and registration debug panels plus the registration navigation entry are gated by `import.meta.env.DEV` or `VITE_DEBUG_UI=true`; primary navigation is now a burger menu instead of the old tab strip.
 - Successful comment submission now also triggers the global bottom `submitBanner`, so users see "Комментарий успешно отправлен" even when the in-card success banner is above the current scroll position after a slow ITILIUM `add_comment`.
 - Marketing request creation now formats `ExecutionDate` from HTML date `YYYY-MM-DD` to ITILIUM's documented `DD.MM.YYYY`, sends service/subdivision/date with several field-name aliases for 1C compatibility, and surfaces JSON string business errors from 1C directly instead of `cannot unmarshal string`. If `create_sc_Marketing` returns the "missing service/subdivision/date" business error for a no-file multipart request, backend retries the same payload as `application/x-www-form-urlencoded`, then as POST query params, because the current 1C publication appears not to read multipart fields for this endpoint.
+- Live logs on 2026-06-01 showed that `create_sc_Marketing` can return 500 on the urlencoded retry with `РаботаСМакс.Модуль(559): Значение не является значением объектного типа (Заголовки)`; the backend now treats this 1C 5xx as retryable for no-file marketing requests and proceeds to the POST-with-query fallback.
 
 ## Important Decisions
 

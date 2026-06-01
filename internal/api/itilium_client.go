@@ -798,9 +798,28 @@ func (c *Client) CreateMarketingRequest(ctx context.Context, request models.Crea
 			"request_id", middleware.RequestIDFromContext(ctx),
 			"user_id", middleware.UserIDFromContext(ctx),
 		)
+		retryAsQuery := false
 		payload, err = c.doFormPostBytes(ctx, pathCreateSCMarketing, form)
 		if err != nil {
-			return models.TicketDetail{}, err
+			var statusErr HTTPStatusError
+			if errors.As(err, &statusErr) && statusErr.StatusCode >= http.StatusInternalServerError {
+				// 1С может падать на urlencoded из-за чтения Заголовки; пробуем тот же payload в query.
+				retryAsQuery = true
+				c.logger.Warn(
+					"create_sc_Marketing urlencoded form failed, retrying as query post",
+					"status_code", statusErr.StatusCode,
+					"request_id", middleware.RequestIDFromContext(ctx),
+					"user_id", middleware.UserIDFromContext(ctx),
+				)
+			} else {
+				return models.TicketDetail{}, err
+			}
+		}
+		if retryAsQuery {
+			payload, err = c.doPostEmptyQuery(ctx, pathCreateSCMarketing, form)
+			if err != nil {
+				return models.TicketDetail{}, err
+			}
 		}
 	}
 	if len(request.FileAttachments) == 0 && isMarketingRequiredFieldsMissingResponse(payload) {
