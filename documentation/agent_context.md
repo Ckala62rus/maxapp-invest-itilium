@@ -45,6 +45,7 @@
 - Regular ticket creation through `/create_sc` now sends only the user's description text in the `description` field. Request type, department and execution date are no longer appended to the regular ticket description; marketing-specific fields remain isolated in `/create_sc_Marketing`.
 - Ticket mutations now write a short Redis overlay after successful comments, status changes, responsible changes and rating confirmation. Lists and details apply this overlay for a couple of minutes, so the UI does not immediately roll back to stale `find_sc` data after a successful `change_state_sc`; if 1C keeps returning the old state after the overlay expires, the issue is on the 1C side.
 - Production UI no longer shows prototype state samples, summary counter cards, or MAX bridge debug data. Home and registration debug panels plus the registration navigation entry are gated by `import.meta.env.DEV` or `VITE_DEBUG_UI=true`; primary navigation is now a burger menu instead of the old tab strip.
+- Successful comment submission now also triggers the global bottom `submitBanner`, so users see "Комментарий успешно отправлен" even when the in-card success banner is above the current scroll position after a slow ITILIUM `add_comment`.
 
 ## Important Decisions
 

@@ -469,6 +469,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     if (response?.data?.success) {
       commentDraft.value = ''
       commentAttachmentFiles.value = []
+      submitBanner.value = 'Комментарий успешно отправлен.'
       commentSuccessTick.value += 1
     }
   }
