@@ -506,12 +506,112 @@ func (c *Client) doMultipartFormPostBytesWithFiles(ctx context.Context, path str
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
+	return c.logMultipartFormResponse(ctx, endpoint, form, files, start, response.StatusCode, payload)
+}
+
+func (c *Client) doPostQueryWithMultipartForm(ctx context.Context, path string, query, form url.Values, files []models.FileAttachment) ([]byte, error) {
+	if c.baseURL == "" {
+		return nil, errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse itilium url: %w", err)
+	}
+	endpoint.RawQuery = query.Encode()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for key, values := range form {
+		for _, value := range values {
+			if err := writer.WriteField(key, value); err != nil {
+				return nil, fmt.Errorf("write multipart field %q: %w", key, err)
+			}
+		}
+	}
+	for _, fa := range files {
+		part, err := writer.CreateFormFile("files", fa.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("create form file: %w", err)
+		}
+		if _, err := part.Write(fa.Data); err != nil {
+			return nil, fmt.Errorf("write form file: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), body)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error(
+			"itilium query multipart post request failed",
+			"method", http.MethodPost,
+			"url", endpoint.String(),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return nil, fmt.Errorf("perform query multipart post request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(payload), "\ufeff")
+	c.logger.Info(
+		"itilium query multipart post request completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"query_string", truncateLogString(query.Encode(), 12000),
+		"form_fields", truncateLogString(form.Encode(), 12000),
+		"response_body", truncateLogString(respText, 8000),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+	c.logger.Debug(
+		"itilium query multipart post request details",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"query", query.Encode(),
+		"form_fields", form.Encode(),
+		"response_body", respText,
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+
+	if response.StatusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
+func (c *Client) logMultipartFormResponse(ctx context.Context, endpoint *url.URL, form url.Values, files []models.FileAttachment, start time.Time, statusCode int, payload []byte) ([]byte, error) {
 	respText := strings.TrimPrefix(string(payload), "\ufeff")
 	c.logger.Info(
 		"itilium multipart form request completed",
 		"method", http.MethodPost,
 		"url", endpoint.String(),
-		"status_code", response.StatusCode,
+		"status_code", statusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"form_fields", truncateLogString(form.Encode(), 12000),
 		"files", multipartFileLogMeta(files),
@@ -523,7 +623,7 @@ func (c *Client) doMultipartFormPostBytesWithFiles(ctx context.Context, path str
 		"itilium multipart form request details",
 		"method", http.MethodPost,
 		"url", endpoint.String(),
-		"status_code", response.StatusCode,
+		"status_code", statusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"form_fields", form.Encode(),
 		"files", multipartFileLogMeta(files),
@@ -532,8 +632,8 @@ func (c *Client) doMultipartFormPostBytesWithFiles(ctx context.Context, path str
 		"user_id", middleware.UserIDFromContext(ctx),
 	)
 
-	if response.StatusCode >= 400 {
-		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	if statusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: statusCode}
 	}
 
 	return payload, nil
@@ -883,7 +983,13 @@ func buildMarketingCreateForm(request models.CreateMarketingRequest) url.Values 
 	form.Set("id", strings.TrimSpace(request.UserID))
 	setMarketingCreateFieldAliases(form, []string{"Services", "Service", "services", "КомпонентаУслуги"}, request.ServiceCode)
 	setMarketingCreateFieldAliases(form, []string{"Subdivision", "subdivision", "Подразделение"}, request.Subdivision)
-	setMarketingExecutionDateAliases(form, request.ExecutionDate)
+	if trimmedDate := strings.TrimSpace(request.ExecutionDate); trimmedDate != "" {
+		// В query/body отправляем одно документированное поле; алиасы даты перебираются отдельно в retry.
+		form.Set("ExecutionDate", formatMarketingExecutionDate(trimmedDate))
+		setMarketingCreateFieldAliases(form, []string{"WithoutDate", "withoutDate", "БезДаты"}, "Ложь")
+	} else if request.WithoutDate {
+		setMarketingCreateFieldAliases(form, []string{"WithoutDate", "withoutDate", "БезДаты"}, "Истина")
+	}
 	if formNumber := strings.TrimSpace(request.FormNumber); formNumber != "" {
 		setMarketingCreateFieldAliases(form, []string{"FormNumber", "formNumber", "НомерФормы"}, formNumber)
 	}
@@ -898,36 +1004,45 @@ func buildMarketingCreateForm(request models.CreateMarketingRequest) url.Values 
 }
 
 // submitMarketingCreateWithoutFiles отправляет create_sc_Marketing без вложений.
-// На текущей публикации 1С query принимает услугу/подразделение, а дату читает из тела POST.
+// На текущей публикации 1С query принимает услугу/подразделение; дату пробуем в query, body и multipart по одному полю.
 func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url.Values, rawExecutionDate string) ([]byte, error) {
 	query, dateBody := splitMarketingCreateForm(form)
+
+	var lastPayload []byte
+
+	// Сначала — документированный вариант: все поля в query, дата одним ExecutionDate.
+	if dotted := formatMarketingExecutionDate(rawExecutionDate); dotted != "" {
+		singleDateQuery := cloneURLValues(query)
+		singleDateQuery.Set("ExecutionDate", dotted)
+		payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, singleDateQuery)
+		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
+			return payload, nil
+		}
+		if err != nil && !isRetryableMarketingCreateError(err) {
+			return nil, err
+		}
+		lastPayload = payload
+	}
 
 	if len(dateBody) > 0 {
 		payload, err := c.doPostQueryWithUrlencodedBody(ctx, pathCreateSCMarketing, query, dateBody)
 		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
 			return payload, nil
 		}
-		if err != nil {
-			var statusErr HTTPStatusError
-			if !errors.As(err, &statusErr) || statusErr.StatusCode < http.StatusInternalServerError {
-				return nil, err
-			}
-			c.logger.Warn(
-				"create_sc_Marketing hybrid query+body failed with 5xx, retrying date body variants",
-				"status_code", statusErr.StatusCode,
-				"request_id", middleware.RequestIDFromContext(ctx),
-				"user_id", middleware.UserIDFromContext(ctx),
-			)
-		} else if isMarketingExecutionDateOnlyMissingResponse(payload) {
+		if err != nil && !isRetryableMarketingCreateError(err) {
+			return nil, err
+		}
+		if err == nil {
+			lastPayload = payload
+		}
+		if err == nil && isMarketingExecutionDateOnlyMissingResponse(payload) {
 			for idx, variant := range minimalMarketingDateBodyVariants(rawExecutionDate) {
 				variantPayload, variantErr := c.doPostQueryWithUrlencodedBody(ctx, pathCreateSCMarketing, query, variant)
 				if variantErr != nil {
-					var statusErr HTTPStatusError
-					if errors.As(variantErr, &statusErr) && statusErr.StatusCode >= http.StatusInternalServerError {
+					if isRetryableMarketingCreateError(variantErr) {
 						c.logger.Warn(
-							"create_sc_Marketing date body variant failed with 5xx",
+							"create_sc_Marketing date body variant failed with retryable error",
 							"variant_index", idx,
-							"status_code", statusErr.StatusCode,
 							"request_id", middleware.RequestIDFromContext(ctx),
 							"user_id", middleware.UserIDFromContext(ctx),
 						)
@@ -938,19 +1053,94 @@ func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url
 				if !isMarketingRequiredFieldsMissingResponse(variantPayload) {
 					return variantPayload, nil
 				}
-				payload = variantPayload
+				lastPayload = variantPayload
 			}
-		} else if !isMarketingRequiredFieldsMissingResponse(payload) {
-			return payload, nil
 		}
 	}
 
+	for idx, variant := range marketingDateFieldVariants(rawExecutionDate) {
+		mergedQuery := cloneURLValues(query)
+		for key, values := range variant {
+			for _, value := range values {
+				mergedQuery.Set(key, value)
+			}
+		}
+
+		payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, mergedQuery)
+		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
+			return payload, nil
+		}
+		if err != nil && !isRetryableMarketingCreateError(err) {
+			return nil, err
+		}
+		if err == nil {
+			lastPayload = payload
+			if !isMarketingExecutionDateOnlyMissingResponse(payload) {
+				break
+			}
+			continue
+		}
+
+		c.logger.Warn(
+			"create_sc_Marketing single-date query variant failed with retryable error",
+			"variant_index", idx,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+	}
+
+	for idx, variant := range marketingDateFieldVariants(rawExecutionDate) {
+		payload, err := c.doPostQueryWithMultipartForm(ctx, pathCreateSCMarketing, query, variant, nil)
+		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
+			return payload, nil
+		}
+		if err != nil && !isRetryableMarketingCreateError(err) {
+			return nil, err
+		}
+		if err == nil {
+			lastPayload = payload
+			if !isMarketingExecutionDateOnlyMissingResponse(payload) {
+				break
+			}
+			continue
+		}
+
+		c.logger.Warn(
+			"create_sc_Marketing query+multipart date variant failed with retryable error",
+			"variant_index", idx,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+	}
+
 	c.logger.Warn(
-		"create_sc_Marketing hybrid request was not accepted, retrying as query post",
+		"create_sc_Marketing date variants were not accepted, retrying with full date alias set in query",
 		"request_id", middleware.RequestIDFromContext(ctx),
 		"user_id", middleware.UserIDFromContext(ctx),
 	)
-	return c.doPostEmptyQuery(ctx, pathCreateSCMarketing, form)
+	fullForm := cloneURLValues(form)
+	appendMarketingExecutionDateAliases(fullForm, rawExecutionDate)
+	payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, fullForm)
+	if err != nil {
+		return nil, err
+	}
+	if isMarketingRequiredFieldsMissingResponse(payload) && lastPayload != nil {
+		return lastPayload, nil
+	}
+	return payload, nil
+}
+
+func isRetryableMarketingCreateError(err error) bool {
+	var statusErr HTTPStatusError
+	return errors.As(err, &statusErr) && statusErr.StatusCode >= http.StatusInternalServerError
+}
+
+func cloneURLValues(source url.Values) url.Values {
+	cloned := url.Values{}
+	for key, values := range source {
+		cloned[key] = append([]string(nil), values...)
+	}
+	return cloned
 }
 
 func isMarketingRequiredFieldsMissingResponse(payload []byte) bool {
@@ -995,6 +1185,10 @@ func setMarketingCreateFieldAliases(form url.Values, keys []string, value string
 }
 
 func setMarketingExecutionDateAliases(form url.Values, rawDate string) {
+	appendMarketingExecutionDateAliases(form, rawDate)
+}
+
+func appendMarketingExecutionDateAliases(form url.Values, rawDate string) {
 	trimmed := strings.TrimSpace(rawDate)
 	if trimmed == "" {
 		return
@@ -1012,17 +1206,25 @@ func setMarketingExecutionDateAliases(form url.Values, rawDate string) {
 	if dotted != "" {
 		dottedWithTime = dotted + " 0:00:00"
 	}
+	dottedWithNine := dotted
+	if dotted != "" {
+		dottedWithNine = dotted + " 9:00:00"
+	}
 
 	for key, value := range map[string]string{
-		"ExecutionDate":            dotted,
-		"executionDate":            dotted,
-		"ДатаИсполнения":           dottedWithTime,
-		"ЖелаемаяДатаИсполнения":   dottedWithTime,
-		"DesiredExecutionDate":     dotted,
-		"deadlineDate":             dottedWithTime,
-		"Date":                     dotted,
-		"ExecutionDateTime":        dottedWithTime,
-		"ExecutionDateISO":         isoDate,
+		"ExecutionDate":          dotted,
+		"executionDate":          dotted,
+		"ДатаИсполнения":         dottedWithTime,
+		"ЖелаемаяДатаИсполнения": dottedWithTime,
+		"DesiredExecutionDate":   dotted,
+		"deadlineDate":           dottedWithTime,
+		"Date":                   dotted,
+		"ExecutionDateTime":      dottedWithTime,
+		"ExecutionDateISO":       isoDate,
+		"date_inc":               dotted,
+		"СрокИсполнения":         dottedWithTime,
+		"ДатаВыполнения":         dottedWithNine,
+		"ЖелаемаяДата":           dottedWithTime,
 	} {
 		if value != "" {
 			form.Set(key, value)
@@ -1041,7 +1243,48 @@ func marketingExecutionDateFieldKeys() map[string]struct{} {
 		"Date":                   {},
 		"ExecutionDateTime":      {},
 		"ExecutionDateISO":       {},
+		"date_inc":               {},
+		"СрокИсполнения":         {},
+		"ДатаВыполнения":         {},
+		"ЖелаемаяДата":           {},
 	}
+}
+
+func marketingDateFieldVariants(rawDate string) []url.Values {
+	dotted := formatMarketingExecutionDate(rawDate)
+	if dotted == "" {
+		return nil
+	}
+	withTimeZero := dotted + " 0:00:00"
+	withTimeNine := dotted + " 9:00:00"
+	isoDate := strings.TrimSpace(rawDate)
+	if parsed, err := time.Parse("2006-01-02", rawDate); err == nil {
+		isoDate = parsed.Format("2006-01-02")
+	}
+
+	candidates := []struct {
+		key   string
+		value string
+	}{
+		{"ExecutionDate", dotted},
+		{"ExecutionDate", withTimeNine},
+		{"ExecutionDate", withTimeZero},
+		{"ЖелаемаяДатаИсполнения", withTimeZero},
+		{"ДатаИсполнения", withTimeZero},
+		{"date_inc", dotted},
+		{"СрокИсполнения", withTimeZero},
+		{"ДатаВыполнения", withTimeNine},
+		{"DesiredExecutionDate", dotted},
+		{"deadlineDate", withTimeZero},
+		{"ExecutionDateISO", isoDate},
+		{"ЖелаемаяДата", withTimeZero},
+	}
+
+	variants := make([]url.Values, 0, len(candidates))
+	for _, candidate := range candidates {
+		variants = append(variants, url.Values{candidate.key: {candidate.value}})
+	}
+	return variants
 }
 
 func splitMarketingCreateForm(form url.Values) (url.Values, url.Values) {

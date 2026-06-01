@@ -91,13 +91,28 @@ func TestSplitMarketingCreateFormSeparatesDateFields(t *testing.T) {
 	if query.Get("Services") != "SMM" {
 		t.Fatalf("query Services = %q, want SMM", query.Get("Services"))
 	}
+	if query.Get("WithoutDate") != "Ложь" {
+		t.Fatalf("query WithoutDate = %q, want Ложь", query.Get("WithoutDate"))
+	}
 	if query.Get("ExecutionDate") != "" {
 		t.Fatalf("query must not contain ExecutionDate, got %q", query.Get("ExecutionDate"))
 	}
 	if dateBody.Get("ExecutionDate") != "08.07.2026" {
 		t.Fatalf("dateBody ExecutionDate = %q, want 08.07.2026", dateBody.Get("ExecutionDate"))
 	}
-	if dateBody.Get("ЖелаемаяДатаИсполнения") != "08.07.2026 0:00:00" {
-		t.Fatalf("dateBody ЖелаемаяДатаИсполнения = %q, want 08.07.2026 0:00:00", dateBody.Get("ЖелаемаяДатаИсполнения"))
+	if len(dateBody) != 1 {
+		t.Fatalf("dateBody must contain only ExecutionDate, got %v", dateBody)
+	}
+}
+
+func TestMarketingDateFieldVariantsIncludeDocumentedExecutionDate(t *testing.T) {
+	t.Parallel()
+
+	variants := marketingDateFieldVariants("2026-07-01")
+	if len(variants) == 0 {
+		t.Fatal("marketingDateFieldVariants() returned no variants")
+	}
+	if variants[0].Get("ExecutionDate") != "01.07.2026" {
+		t.Fatalf("first variant ExecutionDate = %q, want 01.07.2026", variants[0].Get("ExecutionDate"))
 	}
 }
