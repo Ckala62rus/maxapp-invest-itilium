@@ -63,3 +63,41 @@ func TestIsMarketingRequiredFieldsMissingResponse(t *testing.T) {
 		t.Fatal("isMarketingRequiredFieldsMissingResponse() = true for success payload")
 	}
 }
+
+func TestIsMarketingExecutionDateOnlyMissingResponse(t *testing.T) {
+	t.Parallel()
+
+	if !isMarketingExecutionDateOnlyMissingResponse([]byte(`" Необходимо указать желаемую дату исполнения."`)) {
+		t.Fatal("isMarketingExecutionDateOnlyMissingResponse() = false, want true for date-only error")
+	}
+	if isMarketingExecutionDateOnlyMissingResponse([]byte(`"Не указана услуга. Необходимо указать желаемую дату исполнения."`)) {
+		t.Fatal("isMarketingExecutionDateOnlyMissingResponse() = true, want false when service is also missing")
+	}
+}
+
+func TestSplitMarketingCreateFormSeparatesDateFields(t *testing.T) {
+	t.Parallel()
+
+	form := buildMarketingCreateForm(models.CreateMarketingRequest{
+		UserID:        "40367639",
+		ServiceCode:   "SMM",
+		FormNumber:    "3",
+		Subdivision:   "Иван Васильевич",
+		ExecutionDate: "2026-07-08",
+		FormData:      map[string]string{"Description": "test"},
+	})
+
+	query, dateBody := splitMarketingCreateForm(form)
+	if query.Get("Services") != "SMM" {
+		t.Fatalf("query Services = %q, want SMM", query.Get("Services"))
+	}
+	if query.Get("ExecutionDate") != "" {
+		t.Fatalf("query must not contain ExecutionDate, got %q", query.Get("ExecutionDate"))
+	}
+	if dateBody.Get("ExecutionDate") != "08.07.2026" {
+		t.Fatalf("dateBody ExecutionDate = %q, want 08.07.2026", dateBody.Get("ExecutionDate"))
+	}
+	if dateBody.Get("ЖелаемаяДатаИсполнения") != "08.07.2026 0:00:00" {
+		t.Fatalf("dateBody ЖелаемаяДатаИсполнения = %q, want 08.07.2026 0:00:00", dateBody.Get("ЖелаемаяДатаИсполнения"))
+	}
+}

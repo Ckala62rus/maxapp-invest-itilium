@@ -607,6 +607,82 @@ func (c *Client) doPostEmptyQuery(ctx context.Context, path string, query url.Va
 	return payload, nil
 }
 
+// doPostQueryWithUrlencodedBody отправляет POST с полями в query и датой/доп. полями в теле form-urlencoded.
+func (c *Client) doPostQueryWithUrlencodedBody(ctx context.Context, path string, query, body url.Values) ([]byte, error) {
+	if c.baseURL == "" {
+		return nil, errors.New("itilium base url is required")
+	}
+
+	endpoint, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse itilium url: %w", err)
+	}
+	endpoint.RawQuery = query.Encode()
+
+	encodedBody := body.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(encodedBody))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if c.login != "" {
+		request.SetBasicAuth(c.login, c.password)
+	}
+
+	start := time.Now()
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		c.logger.Error(
+			"itilium hybrid post request failed",
+			"method", http.MethodPost,
+			"url", endpoint.String(),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return nil, fmt.Errorf("perform post request: %w", err)
+	}
+	defer response.Body.Close()
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	respText := strings.TrimPrefix(string(payload), "\ufeff")
+	c.logger.Info(
+		"itilium hybrid post request completed",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"query_string", truncateLogString(query.Encode(), 12000),
+		"urlencoded_body", truncateLogString(encodedBody, 12000),
+		"response_body", truncateLogString(respText, 8000),
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+	c.logger.Debug(
+		"itilium hybrid post request details",
+		"method", http.MethodPost,
+		"url", endpoint.String(),
+		"status_code", response.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"query", query.Encode(),
+		"form_body", encodedBody,
+		"response_body", respText,
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+
+	if response.StatusCode >= 400 {
+		return nil, HTTPStatusError{StatusCode: response.StatusCode}
+	}
+
+	return payload, nil
+}
+
 // parseResponsiblesScResponse разбирает ответ responsibles_sc: либо массив команд с вложенным responsibles, либо плоский список.
 func parseResponsiblesScResponse(payloadRaw []byte) ([]models.ResponsibleOption, error) {
 	clean := bytes.TrimPrefix(payloadRaw, []byte{0xEF, 0xBB, 0xBF})
@@ -775,63 +851,19 @@ func (c *Client) ListMarketingSubdivisions(ctx context.Context, userID string) (
 
 // CreateMarketingRequest sends dynamic-form marketing payload to legacy create_sc_Marketing endpoint.
 func (c *Client) CreateMarketingRequest(ctx context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error) {
-	form := url.Values{}
-	form.Set("id", strings.TrimSpace(request.UserID))
-	setMarketingCreateFieldAliases(form, []string{"Services", "Service", "services", "КомпонентаУслуги"}, request.ServiceCode)
-	setMarketingCreateFieldAliases(form, []string{"Subdivision", "subdivision", "Подразделение"}, request.Subdivision)
-	setMarketingCreateFieldAliases(form, []string{"ExecutionDate", "executionDate", "ДатаИсполнения"}, formatMarketingExecutionDate(request.ExecutionDate))
-	for key, value := range request.FormData {
-		normalizedKey := marketingCreateSCFieldName(key)
-		if normalizedKey == "" {
-			continue
-		}
-		form.Set(normalizedKey, strings.TrimSpace(value))
-	}
+	form := buildMarketingCreateForm(request)
 
-	payload, err := c.doMultipartFormPostBytesWithFiles(ctx, pathCreateSCMarketing, form, request.FileAttachments)
+	var (
+		payload []byte
+		err     error
+	)
+	if len(request.FileAttachments) > 0 {
+		payload, err = c.doMultipartFormPostBytesWithFiles(ctx, pathCreateSCMarketing, form, request.FileAttachments)
+	} else {
+		payload, err = c.submitMarketingCreateWithoutFiles(ctx, form, request.ExecutionDate)
+	}
 	if err != nil {
 		return models.TicketDetail{}, err
-	}
-	if len(request.FileAttachments) == 0 && isMarketingRequiredFieldsMissingResponse(payload) {
-		c.logger.Warn(
-			"create_sc_Marketing multipart fields were not accepted, retrying as urlencoded form",
-			"request_id", middleware.RequestIDFromContext(ctx),
-			"user_id", middleware.UserIDFromContext(ctx),
-		)
-		retryAsQuery := false
-		payload, err = c.doFormPostBytes(ctx, pathCreateSCMarketing, form)
-		if err != nil {
-			var statusErr HTTPStatusError
-			if errors.As(err, &statusErr) && statusErr.StatusCode >= http.StatusInternalServerError {
-				// 1С может падать на urlencoded из-за чтения Заголовки; пробуем тот же payload в query.
-				retryAsQuery = true
-				c.logger.Warn(
-					"create_sc_Marketing urlencoded form failed, retrying as query post",
-					"status_code", statusErr.StatusCode,
-					"request_id", middleware.RequestIDFromContext(ctx),
-					"user_id", middleware.UserIDFromContext(ctx),
-				)
-			} else {
-				return models.TicketDetail{}, err
-			}
-		}
-		if retryAsQuery {
-			payload, err = c.doPostEmptyQuery(ctx, pathCreateSCMarketing, form)
-			if err != nil {
-				return models.TicketDetail{}, err
-			}
-		}
-	}
-	if len(request.FileAttachments) == 0 && isMarketingRequiredFieldsMissingResponse(payload) {
-		c.logger.Warn(
-			"create_sc_Marketing urlencoded fields were not accepted, retrying as query post",
-			"request_id", middleware.RequestIDFromContext(ctx),
-			"user_id", middleware.UserIDFromContext(ctx),
-		)
-		payload, err = c.doPostEmptyQuery(ctx, pathCreateSCMarketing, form)
-		if err != nil {
-			return models.TicketDetail{}, err
-		}
 	}
 
 	// По поведению legacy-методов ответ может быть пустым или частичным JSON — используем общий parser + fallback.
@@ -846,14 +878,85 @@ func (c *Client) CreateMarketingRequest(ctx context.Context, request models.Crea
 	return parseCreateSCResponse(payload, createFallback)
 }
 
+func buildMarketingCreateForm(request models.CreateMarketingRequest) url.Values {
+	form := url.Values{}
+	form.Set("id", strings.TrimSpace(request.UserID))
+	setMarketingCreateFieldAliases(form, []string{"Services", "Service", "services", "КомпонентаУслуги"}, request.ServiceCode)
+	setMarketingCreateFieldAliases(form, []string{"Subdivision", "subdivision", "Подразделение"}, request.Subdivision)
+	setMarketingExecutionDateAliases(form, request.ExecutionDate)
+	if formNumber := strings.TrimSpace(request.FormNumber); formNumber != "" {
+		setMarketingCreateFieldAliases(form, []string{"FormNumber", "formNumber", "НомерФормы"}, formNumber)
+	}
+	for key, value := range request.FormData {
+		normalizedKey := marketingCreateSCFieldName(key)
+		if normalizedKey == "" {
+			continue
+		}
+		form.Set(normalizedKey, strings.TrimSpace(value))
+	}
+	return form
+}
+
+// submitMarketingCreateWithoutFiles отправляет create_sc_Marketing без вложений.
+// На текущей публикации 1С query принимает услугу/подразделение, а дату читает из тела POST.
+func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url.Values, rawExecutionDate string) ([]byte, error) {
+	query, dateBody := splitMarketingCreateForm(form)
+
+	if len(dateBody) > 0 {
+		payload, err := c.doPostQueryWithUrlencodedBody(ctx, pathCreateSCMarketing, query, dateBody)
+		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
+			return payload, nil
+		}
+		if err != nil {
+			var statusErr HTTPStatusError
+			if !errors.As(err, &statusErr) || statusErr.StatusCode < http.StatusInternalServerError {
+				return nil, err
+			}
+			c.logger.Warn(
+				"create_sc_Marketing hybrid query+body failed with 5xx, retrying date body variants",
+				"status_code", statusErr.StatusCode,
+				"request_id", middleware.RequestIDFromContext(ctx),
+				"user_id", middleware.UserIDFromContext(ctx),
+			)
+		} else if isMarketingExecutionDateOnlyMissingResponse(payload) {
+			for idx, variant := range minimalMarketingDateBodyVariants(rawExecutionDate) {
+				variantPayload, variantErr := c.doPostQueryWithUrlencodedBody(ctx, pathCreateSCMarketing, query, variant)
+				if variantErr != nil {
+					var statusErr HTTPStatusError
+					if errors.As(variantErr, &statusErr) && statusErr.StatusCode >= http.StatusInternalServerError {
+						c.logger.Warn(
+							"create_sc_Marketing date body variant failed with 5xx",
+							"variant_index", idx,
+							"status_code", statusErr.StatusCode,
+							"request_id", middleware.RequestIDFromContext(ctx),
+							"user_id", middleware.UserIDFromContext(ctx),
+						)
+						continue
+					}
+					return nil, variantErr
+				}
+				if !isMarketingRequiredFieldsMissingResponse(variantPayload) {
+					return variantPayload, nil
+				}
+				payload = variantPayload
+			}
+		} else if !isMarketingRequiredFieldsMissingResponse(payload) {
+			return payload, nil
+		}
+	}
+
+	c.logger.Warn(
+		"create_sc_Marketing hybrid request was not accepted, retrying as query post",
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+	return c.doPostEmptyQuery(ctx, pathCreateSCMarketing, form)
+}
+
 func isMarketingRequiredFieldsMissingResponse(payload []byte) bool {
-	message := strings.TrimSpace(strings.TrimPrefix(string(bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})), "\ufeff"))
+	message := decodeMarketingResponseMessage(payload)
 	if message == "" {
 		return false
-	}
-	var decoded string
-	if err := json.Unmarshal([]byte(message), &decoded); err == nil {
-		message = decoded
 	}
 	lower := strings.ToLower(message)
 	return strings.Contains(lower, "не указана услуга") ||
@@ -861,10 +964,121 @@ func isMarketingRequiredFieldsMissingResponse(payload []byte) bool {
 		strings.Contains(lower, "желаемую дату исполнения")
 }
 
+func isMarketingExecutionDateOnlyMissingResponse(payload []byte) bool {
+	message := decodeMarketingResponseMessage(payload)
+	if message == "" {
+		return false
+	}
+	lower := strings.ToLower(message)
+	return strings.Contains(lower, "желаемую дату исполнения") &&
+		!strings.Contains(lower, "не указана услуга") &&
+		!strings.Contains(lower, "не указано подразделение")
+}
+
+func decodeMarketingResponseMessage(payload []byte) string {
+	message := strings.TrimSpace(strings.TrimPrefix(string(bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})), "\ufeff"))
+	if message == "" {
+		return ""
+	}
+	var decoded string
+	if err := json.Unmarshal([]byte(message), &decoded); err == nil {
+		message = strings.TrimSpace(decoded)
+	}
+	return message
+}
+
 func setMarketingCreateFieldAliases(form url.Values, keys []string, value string) {
 	trimmed := strings.TrimSpace(value)
 	for _, key := range keys {
 		form.Set(key, trimmed)
+	}
+}
+
+func setMarketingExecutionDateAliases(form url.Values, rawDate string) {
+	trimmed := strings.TrimSpace(rawDate)
+	if trimmed == "" {
+		return
+	}
+
+	dotted := formatMarketingExecutionDate(trimmed)
+	isoDate := trimmed
+	if parsed, err := time.Parse("2006-01-02", trimmed); err == nil {
+		isoDate = parsed.Format("2006-01-02")
+		if dotted == "" {
+			dotted = parsed.Format("02.01.2006")
+		}
+	}
+	dottedWithTime := dotted
+	if dotted != "" {
+		dottedWithTime = dotted + " 0:00:00"
+	}
+
+	for key, value := range map[string]string{
+		"ExecutionDate":            dotted,
+		"executionDate":            dotted,
+		"ДатаИсполнения":           dottedWithTime,
+		"ЖелаемаяДатаИсполнения":   dottedWithTime,
+		"DesiredExecutionDate":     dotted,
+		"deadlineDate":             dottedWithTime,
+		"Date":                     dotted,
+		"ExecutionDateTime":        dottedWithTime,
+		"ExecutionDateISO":         isoDate,
+	} {
+		if value != "" {
+			form.Set(key, value)
+		}
+	}
+}
+
+func marketingExecutionDateFieldKeys() map[string]struct{} {
+	return map[string]struct{}{
+		"ExecutionDate":          {},
+		"executionDate":          {},
+		"ДатаИсполнения":         {},
+		"ЖелаемаяДатаИсполнения": {},
+		"DesiredExecutionDate":   {},
+		"deadlineDate":           {},
+		"Date":                   {},
+		"ExecutionDateTime":      {},
+		"ExecutionDateISO":       {},
+	}
+}
+
+func splitMarketingCreateForm(form url.Values) (url.Values, url.Values) {
+	dateKeys := marketingExecutionDateFieldKeys()
+	query := url.Values{}
+	dateBody := url.Values{}
+	for key, values := range form {
+		if _, isDateField := dateKeys[key]; isDateField {
+			for _, value := range values {
+				dateBody.Add(key, value)
+			}
+			continue
+		}
+		for _, value := range values {
+			query.Add(key, value)
+		}
+	}
+	return query, dateBody
+}
+
+func minimalMarketingDateBodyVariants(rawDate string) []url.Values {
+	dotted := formatMarketingExecutionDate(rawDate)
+	if dotted == "" {
+		return nil
+	}
+	withTime := dotted + " 0:00:00"
+	isoDate := strings.TrimSpace(rawDate)
+	if parsed, err := time.Parse("2006-01-02", rawDate); err == nil {
+		isoDate = parsed.Format("2006-01-02")
+	}
+
+	return []url.Values{
+		{"ExecutionDate": {dotted}},
+		{"ЖелаемаяДатаИсполнения": {withTime}},
+		{"ДатаИсполнения": {withTime}},
+		{"ExecutionDate": {withTime}},
+		{"ExecutionDateISO": {isoDate}},
 	}
 }
 
