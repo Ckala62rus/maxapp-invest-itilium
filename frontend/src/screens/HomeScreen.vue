@@ -16,6 +16,10 @@ defineProps({
   rawInitDataUnsafeUserId: {
     type: String,
     required: true
+  },
+  showDebugInfo: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -37,8 +41,8 @@ function openScreen(screenId) {
         Пользователь сможет пройти регистрацию, создать обращение, отследить статус,
         оставить комментарий и работать с заявками в своей ответственности.
       </p>
-      <div class="hero-actions">
-        <button class="primary-button" @click="openScreen('create')">Создать заявку</button>
+      <div class="hero-actions home-hero-actions">
+        <button class="primary-button wide" @click="openScreen('create')">Создать заявку</button>
         <button class="secondary-button" @click="openScreen('myTickets')">Мои заявки</button>
       </div>
     </div>
@@ -55,7 +59,7 @@ function openScreen(screenId) {
       </article>
     </div>
 
-    <article class="content-card">
+    <article v-if="showDebugInfo" class="content-card">
       <h3>MAX bridge debug</h3>
       <p><strong>window.WebApp:</strong> {{ maxBridgeState.isAvailable ? 'доступен' : 'недоступен' }}</p>
       <p><strong>initDataUnsafe.user.id:</strong> {{ rawInitDataUnsafeUserId || 'пусто' }}</p>
@@ -63,29 +67,5 @@ function openScreen(screenId) {
       <p><strong>initData raw:</strong></p>
       <pre class="debug-pre">{{ rawInitData || 'ПУСТО' }}</pre>
     </article>
-
-    <div class="state-grid">
-      <article class="state-card">
-        <div class="spinner"></div>
-        <div>
-          <h3>Loading state</h3>
-          <p>Используем на экранах поиска, списка и отправки заявки.</p>
-        </div>
-      </article>
-      <article class="state-card">
-        <div class="state-icon empty">0</div>
-        <div>
-          <h3>Empty state</h3>
-          <p>Нет заявок в выборке. Предлагаем создать новое обращение.</p>
-        </div>
-      </article>
-      <article class="state-card">
-        <div class="state-icon error">!</div>
-        <div>
-          <h3>Error state</h3>
-          <p>Итилиум недоступен или вернул ошибку. Показываем дружелюбный текст.</p>
-        </div>
-      </article>
-    </div>
   </section>
 </template>

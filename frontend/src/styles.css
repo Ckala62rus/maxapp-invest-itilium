@@ -116,8 +116,7 @@ button {
   color: #d4deeb;
 }
 
-.screen-grid,
-.tab-strip {
+.screen-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -188,6 +187,7 @@ button {
 
 .app-header {
   margin-bottom: 16px;
+  position: relative;
 }
 
 .screen {
@@ -215,6 +215,15 @@ button {
   margin-top: 18px;
 }
 
+.home-hero-actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.home-hero-actions .secondary-button {
+  align-self: flex-start;
+}
+
 .primary-button,
 .secondary-button {
   border-radius: 16px;
@@ -240,6 +249,89 @@ button {
 
 .wide {
   width: 100%;
+}
+
+.menu-toggle {
+  min-width: 98px;
+  min-height: 46px;
+  display: inline-grid;
+  grid-template-columns: 18px 1fr;
+  grid-template-rows: repeat(3, 4px);
+  align-content: center;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 3px;
+  border-radius: 16px;
+  padding: 9px 12px;
+  color: #dbe8f6;
+  background: rgba(24, 37, 59, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  transition: 0.2s ease;
+}
+
+.menu-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(127, 165, 255, 0.5);
+  background: rgba(37, 92, 255, 0.18);
+}
+
+.menu-toggle span {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #dbe8f6;
+}
+
+.menu-toggle strong {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  font-size: 13px;
+}
+
+.burger-menu {
+  position: absolute;
+  top: 78px;
+  left: 18px;
+  right: 18px;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(37, 92, 255, 0.28), transparent 38%),
+    rgba(8, 15, 28, 0.98);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+}
+
+.burger-menu-item {
+  width: 100%;
+  border-radius: 16px;
+  padding: 13px 14px;
+  text-align: left;
+  color: #dbe8f6;
+  background: rgba(24, 37, 59, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  transition: 0.2s ease;
+}
+
+.burger-menu-item.active,
+.burger-menu-item:hover {
+  background: rgba(37, 92, 255, 0.28);
+  border-color: rgba(127, 165, 255, 0.45);
+}
+
+.menu-enter-active,
+.menu-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.menu-enter-from,
+.menu-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 .summary-grid,

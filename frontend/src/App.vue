@@ -20,7 +20,7 @@ import { useTicketFlow } from '@/composables/useTicketFlow'
 const store = useStore()
 
 // Screen ids are used by the internal app navigator after onboarding is complete.
-const screenOptions = [
+const baseScreenOptions = [
   { id: 'home', label: 'Главная' },
   { id: 'profile', label: 'Профиль' },
   { id: 'registration', label: 'Регистрация' },
@@ -36,6 +36,14 @@ const activeScreen = ref('home')
 
 // The submission banner imitates the visual result of a completed action.
 const submitBanner = ref('')
+const isNavigationOpen = ref(false)
+const isDebugUiEnabled = computed(() => {
+  return import.meta.env.DEV || import.meta.env.VITE_DEBUG_UI === 'true'
+})
+
+const screenOptions = computed(() => {
+  return baseScreenOptions.filter((screen) => isDebugUiEnabled.value || screen.id !== 'registration')
+})
 
 const showPrototypeNavigation = computed(() => {
   return Boolean(currentUser.value?.employeeFound) && !currentUser.value?.registrationRequired
@@ -149,6 +157,11 @@ onMounted(() => {
 function openScreen(screenId) {
   activeScreen.value = screenId
   submitBanner.value = ''
+  isNavigationOpen.value = false
+}
+
+function toggleNavigation() {
+  isNavigationOpen.value = !isNavigationOpen.value
 }
 
 function openMyTicketDetails(ticketNumber) {
@@ -172,10 +185,16 @@ function openResponsibleTicketDetails(ticketNumber) {
           </div>
           <button
             v-if="showPrototypeNavigation"
-            class="ghost-button"
-            @click="openScreen('home')"
+            class="menu-toggle"
+            type="button"
+            :aria-expanded="isNavigationOpen ? 'true' : 'false'"
+            aria-controls="app-navigation-menu"
+            @click="toggleNavigation"
           >
-            Домой
+            <span></span>
+            <span></span>
+            <span></span>
+            <strong>Меню</strong>
           </button>
         </header>
 
@@ -183,17 +202,25 @@ function openResponsibleTicketDetails(ticketNumber) {
           Проверяем MAX-сессию...
         </div>
 
-        <div v-if="showPrototypeNavigation" class="tab-strip">
-          <button
-            v-for="screen in screenOptions"
-            :key="screen.id"
-            class="tab-button"
-            :class="{ active: activeScreen === screen.id }"
-            @click="openScreen(screen.id)"
+        <transition name="menu">
+          <nav
+            v-if="showPrototypeNavigation && isNavigationOpen"
+            id="app-navigation-menu"
+            class="burger-menu"
+            aria-label="Навигация по приложению"
           >
-            {{ screen.label }}
-          </button>
-        </div>
+            <button
+              v-for="screen in screenOptions"
+              :key="screen.id"
+              class="burger-menu-item"
+              :class="{ active: activeScreen === screen.id }"
+              type="button"
+              @click="openScreen(screen.id)"
+            >
+              {{ screen.label }}
+            </button>
+          </nav>
+        </transition>
 
         <HomeScreen
           v-if="activeScreen === 'home'"
@@ -201,6 +228,7 @@ function openResponsibleTicketDetails(ticketNumber) {
           :max-bridge-state="maxBridgeState"
           :raw-init-data="rawInitData"
           :raw-init-data-unsafe-user-id="rawInitDataUnsafeUserId"
+          :show-debug-info="isDebugUiEnabled"
           @open-screen="openScreen"
         />
 

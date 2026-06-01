@@ -44,6 +44,7 @@
 - Responsible ticket lists now hydrate `find_sc` summaries concurrently with both per-card and total hydration timeouts. If a user has many responsible tickets, the backend returns a partial enriched list before HTTP `write_timeout`; not-yet-enriched items remain as fallback summaries and can still be opened individually.
 - Regular ticket creation through `/create_sc` now sends only the user's description text in the `description` field. Request type, department and execution date are no longer appended to the regular ticket description; marketing-specific fields remain isolated in `/create_sc_Marketing`.
 - Ticket mutations now write a short Redis overlay after successful comments, status changes, responsible changes and rating confirmation. Lists and details apply this overlay for a couple of minutes, so the UI does not immediately roll back to stale `find_sc` data after a successful `change_state_sc`; if 1C keeps returning the old state after the overlay expires, the issue is on the 1C side.
+- Production home UI no longer shows prototype state samples or MAX bridge debug data. Debug panels and the registration navigation entry are gated by `import.meta.env.DEV` or `VITE_DEBUG_UI=true`; primary navigation is now a burger menu instead of the old tab strip.
 
 ## Important Decisions
 
