@@ -1,10 +1,6 @@
 <script setup>
 // Главная: сводка и быстрые переходы после успешного онбординга.
 defineProps({
-  summaryCards: {
-    type: Array,
-    required: true
-  },
   maxBridgeState: {
     type: Object,
     required: true
@@ -45,18 +41,6 @@ function openScreen(screenId) {
         <button class="primary-button wide" @click="openScreen('create')">Создать заявку</button>
         <button class="secondary-button" @click="openScreen('myTickets')">Мои заявки</button>
       </div>
-    </div>
-
-    <div class="summary-grid">
-      <article
-        v-for="card in summaryCards"
-        :key="card.title"
-        class="summary-card"
-        :class="card.tone"
-      >
-        <span>{{ card.title }}</span>
-        <strong>{{ card.value }}</strong>
-      </article>
     </div>
 
     <article v-if="showDebugInfo" class="content-card">

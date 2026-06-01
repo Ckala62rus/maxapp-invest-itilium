@@ -110,7 +110,6 @@ const {
   isCreatingMarketingRequest,
   currentMarketingSchema,
   normalizedResponsibleTickets,
-  summaryCards,
   paginatedTickets,
   pageCount,
   selectedTicket,
@@ -224,7 +223,6 @@ function openResponsibleTicketDetails(ticketNumber) {
 
         <HomeScreen
           v-if="activeScreen === 'home'"
-          :summary-cards="summaryCards"
           :max-bridge-state="maxBridgeState"
           :raw-init-data="rawInitData"
           :raw-init-data-unsafe-user-id="rawInitDataUnsafeUserId"
