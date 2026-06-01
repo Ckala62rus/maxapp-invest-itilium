@@ -52,3 +52,14 @@ func TestParseCreateSCResponseReturnsStringBusinessError(t *testing.T) {
 		t.Fatalf("parseCreateSCResponse() error = %q, want business message", err.Error())
 	}
 }
+
+func TestIsMarketingRequiredFieldsMissingResponse(t *testing.T) {
+	t.Parallel()
+
+	if !isMarketingRequiredFieldsMissingResponse([]byte(`"Не указана услуга. Не указано подразделение. Необходимо указать желаемую дату исполнения."`)) {
+		t.Fatal("isMarketingRequiredFieldsMissingResponse() = false, want true")
+	}
+	if isMarketingRequiredFieldsMissingResponse([]byte(`{"number":"0000000001"}`)) {
+		t.Fatal("isMarketingRequiredFieldsMissingResponse() = true for success payload")
+	}
+}

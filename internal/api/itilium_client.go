@@ -792,6 +792,28 @@ func (c *Client) CreateMarketingRequest(ctx context.Context, request models.Crea
 	if err != nil {
 		return models.TicketDetail{}, err
 	}
+	if len(request.FileAttachments) == 0 && isMarketingRequiredFieldsMissingResponse(payload) {
+		c.logger.Warn(
+			"create_sc_Marketing multipart fields were not accepted, retrying as urlencoded form",
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		payload, err = c.doFormPostBytes(ctx, pathCreateSCMarketing, form)
+		if err != nil {
+			return models.TicketDetail{}, err
+		}
+	}
+	if len(request.FileAttachments) == 0 && isMarketingRequiredFieldsMissingResponse(payload) {
+		c.logger.Warn(
+			"create_sc_Marketing urlencoded fields were not accepted, retrying as query post",
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		payload, err = c.doPostEmptyQuery(ctx, pathCreateSCMarketing, form)
+		if err != nil {
+			return models.TicketDetail{}, err
+		}
+	}
 
 	// По поведению legacy-методов ответ может быть пустым или частичным JSON — используем общий parser + fallback.
 	createFallback := models.CreateTicketRequest{
@@ -803,6 +825,21 @@ func (c *Client) CreateMarketingRequest(ctx context.Context, request models.Crea
 		ExecutionDate: request.ExecutionDate,
 	}
 	return parseCreateSCResponse(payload, createFallback)
+}
+
+func isMarketingRequiredFieldsMissingResponse(payload []byte) bool {
+	message := strings.TrimSpace(strings.TrimPrefix(string(bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})), "\ufeff"))
+	if message == "" {
+		return false
+	}
+	var decoded string
+	if err := json.Unmarshal([]byte(message), &decoded); err == nil {
+		message = decoded
+	}
+	lower := strings.ToLower(message)
+	return strings.Contains(lower, "не указана услуга") ||
+		strings.Contains(lower, "не указано подразделение") ||
+		strings.Contains(lower, "желаемую дату исполнения")
 }
 
 func setMarketingCreateFieldAliases(form url.Values, keys []string, value string) {
