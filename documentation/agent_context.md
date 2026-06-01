@@ -46,6 +46,7 @@
 - Ticket mutations now write a short Redis overlay after successful comments, status changes, responsible changes and rating confirmation. Lists and details apply this overlay for a couple of minutes, so the UI does not immediately roll back to stale `find_sc` data after a successful `change_state_sc`; if 1C keeps returning the old state after the overlay expires, the issue is on the 1C side.
 - Production UI no longer shows prototype state samples, summary counter cards, or MAX bridge debug data. Home and registration debug panels plus the registration navigation entry are gated by `import.meta.env.DEV` or `VITE_DEBUG_UI=true`; primary navigation is now a burger menu instead of the old tab strip.
 - Successful comment submission now also triggers the global bottom `submitBanner`, so users see "Комментарий успешно отправлен" even when the in-card success banner is above the current scroll position after a slow ITILIUM `add_comment`.
+- Marketing request creation now formats `ExecutionDate` from HTML date `YYYY-MM-DD` to ITILIUM's documented `DD.MM.YYYY`, sends service/subdivision/date with several field-name aliases for 1C compatibility, and surfaces JSON string business errors from 1C directly instead of `cannot unmarshal string`.
 
 ## Important Decisions
 

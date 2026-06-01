@@ -26,3 +26,29 @@ func TestBuildCreateSCLongDescriptionDoesNotAppendMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatMarketingExecutionDateConvertsHTMLDate(t *testing.T) {
+	t.Parallel()
+
+	got := formatMarketingExecutionDate("2026-06-26")
+
+	if got != "26.06.2026" {
+		t.Fatalf("formatMarketingExecutionDate() = %q, want %q", got, "26.06.2026")
+	}
+}
+
+func TestParseCreateSCResponseReturnsStringBusinessError(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseCreateSCResponse(
+		[]byte(`"Не указана услуга. Не указано подразделение. Необходимо указать желаемую дату исполнения."`),
+		models.CreateTicketRequest{Title: "Маркетинговая заявка"},
+	)
+
+	if err == nil {
+		t.Fatal("parseCreateSCResponse() error = nil, want business error")
+	}
+	if !strings.Contains(err.Error(), "Не указана услуга") {
+		t.Fatalf("parseCreateSCResponse() error = %q, want business message", err.Error())
+	}
+}

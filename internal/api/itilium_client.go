@@ -777,9 +777,9 @@ func (c *Client) ListMarketingSubdivisions(ctx context.Context, userID string) (
 func (c *Client) CreateMarketingRequest(ctx context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error) {
 	form := url.Values{}
 	form.Set("id", strings.TrimSpace(request.UserID))
-	form.Set("Services", strings.TrimSpace(request.ServiceCode))
-	form.Set("Subdivision", strings.TrimSpace(request.Subdivision))
-	form.Set("ExecutionDate", strings.TrimSpace(request.ExecutionDate))
+	setMarketingCreateFieldAliases(form, []string{"Services", "Service", "services", "КомпонентаУслуги"}, request.ServiceCode)
+	setMarketingCreateFieldAliases(form, []string{"Subdivision", "subdivision", "Подразделение"}, request.Subdivision)
+	setMarketingCreateFieldAliases(form, []string{"ExecutionDate", "executionDate", "ДатаИсполнения"}, formatMarketingExecutionDate(request.ExecutionDate))
 	for key, value := range request.FormData {
 		normalizedKey := marketingCreateSCFieldName(key)
 		if normalizedKey == "" {
@@ -803,6 +803,26 @@ func (c *Client) CreateMarketingRequest(ctx context.Context, request models.Crea
 		ExecutionDate: request.ExecutionDate,
 	}
 	return parseCreateSCResponse(payload, createFallback)
+}
+
+func setMarketingCreateFieldAliases(form url.Values, keys []string, value string) {
+	trimmed := strings.TrimSpace(value)
+	for _, key := range keys {
+		form.Set(key, trimmed)
+	}
+}
+
+func formatMarketingExecutionDate(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	if parsed, err := time.Parse("2006-01-02", trimmed); err == nil {
+		return parsed.Format("02.01.2006")
+	}
+
+	return trimmed
 }
 
 func marketingCreateSCFieldName(key string) string {
@@ -842,6 +862,15 @@ func parseCreateSCResponse(payload []byte, req models.CreateTicketRequest) (mode
 	payload = bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
 	if len(strings.TrimSpace(string(payload))) == 0 {
 		return ticketDetailCreateSCFallback(req), nil
+	}
+
+	var message string
+	if err := json.Unmarshal(payload, &message); err == nil {
+		message = strings.TrimSpace(message)
+		if message == "" {
+			return ticketDetailCreateSCFallback(req), nil
+		}
+		return models.TicketDetail{}, errors.New(message)
 	}
 
 	var detail models.TicketDetail
