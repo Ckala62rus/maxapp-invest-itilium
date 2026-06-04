@@ -179,49 +179,49 @@ function openResponsibleTicketDetails(ticketNumber) {
   <main class="phone-stage phone-stage--standalone">
       <div class="phone-frame">
         <header class="app-header">
-          <div>
+          <div class="app-header-brand">
             <p class="eyebrow">MAX x ITILIUM</p>
             <strong>Сервисные заявки</strong>
             <p v-if="registrationIdentityUserId" class="eyebrow">MAX ID: {{ registrationIdentityUserId }}</p>
           </div>
-          <button
-            v-if="showPrototypeNavigation"
-            class="menu-toggle"
-            type="button"
-            :aria-expanded="isNavigationOpen ? 'true' : 'false'"
-            aria-controls="app-navigation-menu"
-            @click="toggleNavigation"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-            <strong>Меню</strong>
-          </button>
+          <div v-if="showPrototypeNavigation" class="app-header-nav">
+            <button
+              class="menu-toggle"
+              type="button"
+              :aria-expanded="isNavigationOpen ? 'true' : 'false'"
+              aria-controls="app-navigation-menu"
+              @click="toggleNavigation"
+            >
+              <span></span>
+              <span></span>
+              <span></span>
+              <strong>Меню</strong>
+            </button>
+            <transition name="menu">
+              <nav
+                v-if="isNavigationOpen"
+                id="app-navigation-menu"
+                class="burger-menu"
+                aria-label="Навигация по приложению"
+              >
+                <button
+                  v-for="screen in screenOptions"
+                  :key="screen.id"
+                  class="burger-menu-item"
+                  :class="{ active: activeScreen === screen.id }"
+                  type="button"
+                  @click="openScreen(screen.id)"
+                >
+                  {{ screen.label }}
+                </button>
+              </nav>
+            </transition>
+          </div>
         </header>
 
         <div v-if="isAuthBootstrapping" class="submit-banner">
           Проверяем MAX-сессию...
         </div>
-
-        <transition name="menu">
-          <nav
-            v-if="showPrototypeNavigation && isNavigationOpen"
-            id="app-navigation-menu"
-            class="burger-menu"
-            aria-label="Навигация по приложению"
-          >
-            <button
-              v-for="screen in screenOptions"
-              :key="screen.id"
-              class="burger-menu-item"
-              :class="{ active: activeScreen === screen.id }"
-              type="button"
-              @click="openScreen(screen.id)"
-            >
-              {{ screen.label }}
-            </button>
-          </nav>
-        </transition>
 
         <HomeScreen
           v-if="activeScreen === 'home'"
