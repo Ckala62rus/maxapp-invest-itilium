@@ -428,7 +428,7 @@
 - добавить комментарий: `POST /add_comment` (`id`, `source`, `source_type=servicecall`, `comment_text`, `multipart/form-data`; при файлах — ещё части `files`)
 - сменить статус: `POST /change_state_sc` (`id`, `telegram`, `inc_number`, `new_state`, optional `date_inc`, `comment_text`, `multipart/form-data`)
 - получить доступных ответственных: **`POST /responsibles_sc?id=…&sc_number=…`** (параметры в query, тело пустое; на части контуров `GET` даёт 405) **или** fallback `POST` с `telegram`+`sc_number` в query, **или** `multipart/form-data` только с `id` и `sc_number` (без `telegram`, иначе возможна ошибка 1С); ответ — массив **команд** с `responsibles` или плоский список
-- сменить ответственного: `POST /change_responsible_sc` (`id`, `telegram`, `inc_number`, `responsibleEmployeeId`, `multipart/form-data`)
+- сменить ответственного: `POST /change_responsible_sc` (`id`, `inc_number`, `responsibleEmployeeId` **или** `responsibleTeamId` — сотрудник или рабочая группа; `multipart/form-data`)
 - оценить решение: `POST /confirm_sc` (query: `telegram`, `incident`, `mark`, опционально `comment_text`; тело пустое) — проксируется как `POST /api/v1/tickets/{number}/confirm`
 
 ## Что еще не перенесено из legacy
@@ -521,6 +521,7 @@
 
 ### `POST /change_state_sc`, `POST /change_responsible_sc`
 
+- **`change_responsible_sc`** (по согласованию с 1С): `id`, `inc_number`, и одно из назначений — `responsibleEmployeeId` (ответственный сотрудник) или `responsibleTeamId` (рабочая группа). Backend дополнительно может слать `telegram`/`sc_number` для старых публикаций.
 - Успех **`200`**: часто **пустое** тело; затем обновление карточки через `find_sc`.
 - Ошибка бизнес-логики тоже может прийти как **`200`** с JSON-строкой в теле, например `"Не заполнены обязательные параметры"` — backend трактует это как ошибку.
 - Успех смены статуса может прийти как **`200`** с JSON-строкой `"Новое состояние установлено"` — это **не** ошибка; после этого backend читает карточку через `find_sc`.
@@ -531,8 +532,9 @@
 - Типичный вызов: **`POST`** на URL вида `/responsibles_sc?id={userId}&sc_number={номер}` без тела.
 - Успех **`200`**: JSON-массив; частый формат — элементы с `responsibleTeamTitle` / `responsibleTeamId` и вложенным массивом `responsibles` (`responsibleEmployeeId`, `responsibleEmployeeTitle`). Допускается плоский список — backend разворачивает оба варианта.
 
-### `POST /create_sc`
+### `POST /create_sc`, `POST /create_sc_Dax`
 
+- **`create_sc`** — IT-заявка; **`create_sc_Dax`** — DAX-заявка. Параметры **одинаковые**: `id`, `shortDescription`, `description`, опционально части `files` (`multipart/form-data`). Mini app при типе «Заявка в DAX» вызывает `create_sc_Dax`.
 - Успех **`200`**: тело может содержать номер созданной заявки или обёртку — разбор в `parseCreateSCResponse`.
 
 ### `GET /listServicesMarketing`

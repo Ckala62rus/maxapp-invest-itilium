@@ -962,16 +962,30 @@ func (c *Client) GetTicket(ctx context.Context, userID string, number string) (m
 	return detail, nil
 }
 
-// pathCreateSC — HTTP-сервис 1С «создать заявку» (согласовано: id, shortDescription, description, files).
+// pathCreateSC — HTTP-сервис 1С «создать IT-заявку» (id, shortDescription, description, files).
 const pathCreateSC = "/create_sc"
+
+// pathCreateSCDax — HTTP-сервис 1С «создать DAX-заявку»; те же поля, что у create_sc.
+const pathCreateSCDax = "/create_sc_Dax"
+
+// requestTypeDAX — значение requestType из UI для маршрутизации на create_sc_Dax.
+const requestTypeDAX = "Заявка в DAX"
 
 // pathCreateSCMarketing — legacy endpoint for marketing requests with dynamic form number.
 const pathCreateSCMarketing = "/create_sc_Marketing"
 
+// createSCPathForRequest выбирает endpoint 1С по типу заявки из UI.
+func createSCPathForRequest(request models.CreateTicketRequest) string {
+	if strings.TrimSpace(request.RequestType) == requestTypeDAX {
+		return pathCreateSCDax
+	}
+	return pathCreateSC
+}
+
 // CreateTicket sends a create request to ITILIUM.
 func (c *Client) CreateTicket(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
 	// Всегда multipart/form-data (поля + опционально files). Urlencoded на этом HTTP-сервисе 1С ломает разбор запроса.
-	return c.doCreateSCMultipart(ctx, request)
+	return c.doCreateSCMultipart(ctx, createSCPathForRequest(request), request)
 }
 
 // ListMarketingServices returns available marketing request types and normalized dynamic form schemas.
@@ -1931,8 +1945,8 @@ func pickStringFromMap(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// doCreateSCMultipart отправляет create_sc с полями id, shortDescription, description и файлами в частях files.
-func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
+// doCreateSCMultipart отправляет create_sc / create_sc_Dax: id, shortDescription, description, files.
+func (c *Client) doCreateSCMultipart(ctx context.Context, path string, request models.CreateTicketRequest) (models.TicketDetail, error) {
 	if c.baseURL == "" {
 		return models.TicketDetail{}, errors.New("itilium base url is required")
 	}
@@ -1964,7 +1978,10 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateT
 		return models.TicketDetail{}, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	endpoint, err := url.Parse(c.baseURL + pathCreateSC)
+	if strings.TrimSpace(path) == "" {
+		path = pathCreateSC
+	}
+	endpoint, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return models.TicketDetail{}, fmt.Errorf("parse itilium url: %w", err)
 	}
@@ -1988,6 +2005,7 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateT
 	// Имена ключей ниже — только для slog (не уходят в 1С). В HTTP в 1С поля называются id, shortDescription, description, files.
 	c.logger.Info(
 		"itilium outbound create_sc (multipart fields)",
+		"path", path,
 		"url", endpoint.String(),
 		"send_id", strings.TrimSpace(request.UserID),
 		"send_shortDescription", strings.TrimSpace(request.Title),
@@ -2300,19 +2318,22 @@ func (c *Client) ChangeStatus(ctx context.Context, number string, request models
 }
 
 // buildChangeResponsibleForm собирает поля POST /change_responsible_sc по контракту 1С.
+// Обязательные: id, inc_number; цель смены — responsibleEmployeeId (сотрудник) и/или responsibleTeamId (рабочая группа).
 func buildChangeResponsibleForm(number string, request models.ChangeResponsibleRequest) url.Values {
 	form := url.Values{}
 	userID := strings.TrimSpace(request.UserID)
 	trimmedNumber := strings.TrimSpace(number)
 	form.Set("id", userID)
-	form.Set("telegram", userID)
 	form.Set("inc_number", trimmedNumber)
-	// Дублируем номер: часть обработчиков 1С читает sc_number, а не inc_number.
-	form.Set("sc_number", trimmedNumber)
-	form.Set("responsibleEmployeeId", strings.TrimSpace(request.ResponsibleID))
+	if employeeID := strings.TrimSpace(request.ResponsibleID); employeeID != "" {
+		form.Set("responsibleEmployeeId", employeeID)
+	}
 	if teamID := strings.TrimSpace(request.TeamID); teamID != "" {
 		form.Set("responsibleTeamId", teamID)
 	}
+	// Совместимость со старыми обработчиками 1С (не в каноническом контракте, но оставлены на тестовом контуре).
+	form.Set("telegram", userID)
+	form.Set("sc_number", trimmedNumber)
 	return form
 }
 

@@ -81,7 +81,7 @@ Every request passes through the same middleware chain defined in `internal/hand
 - Flow:
   - decodes create form
   - validates minimal required fields
-  - calls the ITILIUM create endpoint
+  - calls ITILIUM `POST /create_sc` (IT) or `POST /create_sc_Dax` (тип «Заявка в DAX») — одинаковые поля multipart
   - returns the created ticket
 
 ### `GET /api/v1/tickets/{number}`
@@ -119,6 +119,7 @@ Every request passes through the same middleware chain defined in `internal/hand
   - returns the selector list used by the ticket card
 
 ### `POST /api/v1/tickets/{number}/responsible`
+- ITILIUM: `change_responsible_sc` with `id`, `inc_number`, `responsibleEmployeeId` and/or `responsibleTeamId`
 - Handler: `Handler.ChangeResponsible`
 - Service: `TicketService.ChangeResponsible`
 - Flow:

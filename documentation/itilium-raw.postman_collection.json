@@ -46,6 +46,10 @@
       "value": "0000000258"
     },
     {
+      "key": "responsibleTeamId",
+      "value": "0000000004"
+    },
+    {
       "key": "newState",
       "value": "04_В работе"
     },
@@ -217,7 +221,45 @@
               ]
             },
             "url": "{{itiliumBaseUrl}}/create_sc",
-            "description": "Создание обычной заявки напрямую в 1С ITILIUM."
+            "description": "Создание IT-заявки в 1С."
+          }
+        },
+        {
+          "name": "create_sc_Dax (POST multipart)",
+          "description": "Создание DAX-заявки. По контракту 1С параметры те же, что у create_sc: id, shortDescription, description, files.",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM."
+                },
+                {
+                  "key": "shortDescription",
+                  "value": "Тестовая DAX-заявка",
+                  "type": "text",
+                  "description": "Краткая тема."
+                },
+                {
+                  "key": "description",
+                  "value": "Описание DAX-заявки из Postman",
+                  "type": "text",
+                  "description": "Подробное описание."
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "",
+                  "description": "Вложения (несколько частей files)."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/create_sc_Dax",
+            "description": "DAX-заявка — те же поля multipart, что и create_sc."
           }
         }
       ]
@@ -355,7 +397,7 @@
         },
         {
           "name": "change_responsible_sc (POST multipart)",
-          "description": "Смена ответственного сотрудника по responsibleEmployeeId.",
+          "description": "Смена ответственного по контракту 1С: id, inc_number, и responsibleEmployeeId (сотрудник) и/или responsibleTeamId (рабочая группа). Для проверки только сотрудника — заполните responsibleId; для группы — responsibleTeamId из responsibles_sc.",
           "request": {
             "method": "POST",
             "body": {
@@ -365,42 +407,30 @@
                   "key": "id",
                   "value": "{{userId}}",
                   "type": "text",
-                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
-                },
-                {
-                  "key": "telegram",
-                  "value": "{{userId}}",
-                  "type": "text",
-                  "description": "Идентификатор пользователя для legacy-параметра telegram (обычно совпадает с userId)."
+                  "description": "Идентификатор пользователя MAX/ITILIUM."
                 },
                 {
                   "key": "inc_number",
                   "value": "{{ticketNumber}}",
                   "type": "text",
-                  "description": "Номер инцидента/заявки для workflow-операций."
+                  "description": "Номер заявки (обязательный)."
                 },
                 {
                   "key": "responsibleEmployeeId",
                   "value": "{{responsibleId}}",
                   "type": "text",
-                  "description": "ID сотрудника, на которого переводим ответственность."
+                  "description": "Ответственный сотрудник (UUID из responsibles_sc)."
                 },
                 {
                   "key": "responsibleTeamId",
                   "value": "{{responsibleTeamId}}",
                   "type": "text",
-                  "description": "ID команды из responsibles_sc (опционально, но требуется частью workflow 1С)."
-                },
-                {
-                  "key": "sc_number",
-                  "value": "{{ticketNumber}}",
-                  "type": "text",
-                  "description": "Дубликат номера заявки для совместимости с обработчиками 1С."
+                  "description": "Рабочая группа (responsibleTeamId из responsibles_sc); альтернатива или дополнение к сотруднику."
                 }
               ]
             },
             "url": "{{itiliumBaseUrl}}/change_responsible_sc",
-            "description": "Смена ответственного сотрудника по responsibleEmployeeId."
+            "description": "Смена ответственного: id + inc_number + (responsibleEmployeeId | responsibleTeamId)."
           }
         },
         {

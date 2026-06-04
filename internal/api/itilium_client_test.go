@@ -199,6 +199,17 @@ func TestParseItiliumMutationResponseTreatsStateChangedAsSuccess(t *testing.T) {
 	}
 }
 
+func TestCreateSCPathForRequestRoutesDax(t *testing.T) {
+	t.Parallel()
+
+	if got := createSCPathForRequest(models.CreateTicketRequest{RequestType: requestTypeDAX}); got != pathCreateSCDax {
+		t.Fatalf("createSCPathForRequest(DAX) = %q, want %s", got, pathCreateSCDax)
+	}
+	if got := createSCPathForRequest(models.CreateTicketRequest{RequestType: "Заявка в отдел ИТ"}); got != pathCreateSC {
+		t.Fatalf("createSCPathForRequest(IT) = %q, want %s", got, pathCreateSC)
+	}
+}
+
 func TestBuildChangeResponsibleFormUsesIncNumberAndEmployeeId(t *testing.T) {
 	t.Parallel()
 
