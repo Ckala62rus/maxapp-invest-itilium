@@ -186,8 +186,8 @@ func TestBuildChangeStateFormPostponeUsesCalendarDateInc(t *testing.T) {
 		Date:    "2026-06-30",
 	})
 
-	if form.Get("date_inc") != "30.06.2026" {
-		t.Fatalf("date_inc = %q, want 30.06.2026", form.Get("date_inc"))
+	if form.Get("date_inc") != "2026-06-30" {
+		t.Fatalf("date_inc = %q, want 2026-06-30", form.Get("date_inc"))
 	}
 	if form.Get("comment_text") != "апрпарпар" {
 		t.Fatalf("comment_text = %q, want апрпарпар", form.Get("comment_text"))

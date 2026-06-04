@@ -1394,11 +1394,8 @@ func buildChangeStateForm(number string, request models.ChangeStatusRequest) url
 	return form
 }
 
-// formatChangeStateDateInc нормализует date_inc для change_state_sc (формат DD.MM.YYYY в 1С).
+// formatChangeStateDateInc нормализует date_inc для change_state_sc (формат YYYY-MM-DD в 1С).
 func formatChangeStateDateInc(rawDate string) string {
-	if calendarDate := formatItiliumCalendarDate(rawDate); calendarDate != "" {
-		return calendarDate
-	}
 	return formatMarketingExecutionDate(rawDate)
 }
 
