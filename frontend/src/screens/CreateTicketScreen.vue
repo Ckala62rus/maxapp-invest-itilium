@@ -267,7 +267,6 @@ function setMarketingField(key, value) {
             type="file"
             multiple
             accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
-            capture="environment"
             @change="addAttachments"
           />
         </label>
