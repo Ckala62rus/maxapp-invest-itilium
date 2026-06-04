@@ -17,6 +17,7 @@ const INTERACTIVE_SELECTOR = [
 
 const TOUCH_MOVE_THRESHOLD_PX = 14
 const TAP_DEBOUNCE_MS = 400
+const SUPPRESS_ATTR = 'data-maxapp-synthetic-tap'
 
 let touchStartX = 0
 let touchStartY = 0
@@ -44,6 +45,31 @@ function shouldInstallTapBridge() {
   return /android|iphone|ipad|mobile/i.test(navigator.userAgent || '')
 }
 
+function suppressGhostClick(target) {
+  target.setAttribute(SUPPRESS_ATTR, '1')
+  window.setTimeout(() => {
+    target.removeAttribute(SUPPRESS_ATTR)
+  }, 500)
+}
+
+function installGhostClickGuard() {
+  if (window.__maxappGhostClickGuardInstalled) {
+    return
+  }
+  window.__maxappGhostClickGuardInstalled = true
+  document.addEventListener(
+    'click',
+    (event) => {
+      const target = findInteractiveTarget(event.target)
+      if (target?.getAttribute(SUPPRESS_ATTR)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }
+    },
+    true
+  )
+}
+
 function activateTarget(target) {
   const now = Date.now()
   if (target === lastSyntheticTarget && now - lastSyntheticClickAt < TAP_DEBOUNCE_MS) {
@@ -51,9 +77,8 @@ function activateTarget(target) {
   }
   lastSyntheticTarget = target
   lastSyntheticClickAt = now
-  window.setTimeout(() => {
-    target.click()
-  }, 0)
+  suppressGhostClick(target)
+  target.click()
 }
 
 /**
@@ -99,24 +124,12 @@ function installMobileTapBridge() {
         return
       }
 
-      activateTarget(target)
-    },
-    { passive: true, capture: true }
-  )
-
-  document.addEventListener(
-    'pointerup',
-    (event) => {
-      if (event.pointerType !== 'touch') {
-        return
-      }
-      const target = findInteractiveTarget(event.target)
-      if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') {
-        return
+      if (event.cancelable) {
+        event.preventDefault()
       }
       activateTarget(target)
     },
-    { passive: true, capture: true }
+    { passive: false, capture: true }
   )
 }
 
@@ -125,6 +138,7 @@ function installMobileTapBridge() {
  */
 export function ensureMobileInteractions() {
   purgeTouchBlockers()
+  installGhostClickGuard()
 
   const patchButtons = (root) => {
     if (!root?.querySelectorAll) {

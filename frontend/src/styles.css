@@ -1037,18 +1037,15 @@ body.swal2-shown .swal2-container,
   }
 
   .app-header-nav {
-    align-self: stretch;
-    width: 100%;
-  }
-
-  .menu-toggle {
-    width: 100%;
+    align-self: flex-end;
+    width: auto;
+    max-width: 100%;
   }
 
   .burger-menu {
     left: 0;
-    right: 0;
-    width: 100%;
-    min-width: 0;
+    right: auto;
+    width: min(100vw - 24px, 360px);
+    min-width: 240px;
   }
 }

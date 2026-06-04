@@ -14,6 +14,19 @@
         var startEl = null
         var lastEl = null
         var lastAt = 0
+        var SUPPRESS_ATTR = 'data-maxapp-synthetic-tap'
+
+        document.addEventListener(
+          'click',
+          function (e) {
+            var el = e.target && e.target.closest ? e.target.closest(SELECTOR) : null
+            if (el && el.getAttribute(SUPPRESS_ATTR)) {
+              e.preventDefault()
+              e.stopImmediatePropagation()
+            }
+          },
+          true
+        )
 
         function activate(el) {
           if (!el || el.disabled) return
@@ -21,9 +34,11 @@
           if (el === lastEl && now - lastAt < 400) return
           lastEl = el
           lastAt = now
+          el.setAttribute(SUPPRESS_ATTR, '1')
           window.setTimeout(function () {
-            el.click()
-          }, 0)
+            el.removeAttribute(SUPPRESS_ATTR)
+          }, 500)
+          el.click()
         }
 
         function purgeOverlays() {
@@ -59,9 +74,10 @@
             startEl = null
             if (!el) return
             if (Math.abs(t.clientX - sx) > 14 || Math.abs(t.clientY - sy) > 14) return
+            if (e.cancelable) e.preventDefault()
             activate(el)
           },
-          { capture: true, passive: true }
+          { capture: true, passive: false }
         )
 
         function maxBoot() {
