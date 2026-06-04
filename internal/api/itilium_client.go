@@ -27,6 +27,14 @@ const (
 	responsibleTicketHydrationConcurrency  = 6
 	responsibleTicketHydrationTimeout      = 5 * time.Second
 	responsibleTicketHydrationTotalTimeout = 12 * time.Second
+
+	// list_sc на тестовом контуре падает с УстановитьСтроку, если sc_number слишком длинный (много номеров через ';').
+	listSCMaxNumbersPerRequest = 15
+
+	myTicketHydrationConcurrency  = 6
+	myTicketHydrationTimeout      = 5 * time.Second
+	myTicketHydrationTotalTimeout = 10 * time.Second
+	myTicketHydrationMaxTickets   = 30
 )
 
 // Client implements the outbound ITILIUM HTTP client.
@@ -98,29 +106,14 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 		return c.hydrateTicketSummariesFromFindSC(ctx, userID, summaries)
 	}
 
-	// 1С подтвердил контракт list_sc: id + sc_number, где sc_number — номера через ';'.
-	// Это «обогащение» списка темами/статусами; при сбое публикации (500, смена контракта) остаёмся на номерах из find_employee.
-	form := url.Values{}
-	form.Set("id", strings.TrimSpace(userID))
-	form.Set("sc_number", strings.Join(numbers, ";"))
-
-	payload, err := c.doMultipartFormPostBytes(ctx, "/list_sc", form)
+	// list_sc: id + sc_number (номера через ';'). Длинная строка ломает 1С — шлём пачками.
+	response, err := c.fetchListSCSummaries(ctx, userID, numbers)
 	if err != nil {
 		c.logger.Warn(
 			"list_sc failed, returning my tickets from servicecalls only",
 			"error", err,
 			"user_id", userID,
-			"request_id", middleware.RequestIDFromContext(ctx),
-		)
-		return hydrateFromFindSC(summaryFromProfileNumbers()), nil
-	}
-
-	response, err := parseListSCResponse(payload)
-	if err != nil {
-		c.logger.Warn(
-			"list_sc response could not be decoded, using servicecalls only",
-			"error", err,
-			"user_id", userID,
+			"ticket_count", len(numbers),
 			"request_id", middleware.RequestIDFromContext(ctx),
 		)
 		return hydrateFromFindSC(summaryFromProfileNumbers()), nil
@@ -131,6 +124,38 @@ func (c *Client) ListMyTickets(ctx context.Context, userID string) ([]models.Tic
 	}
 
 	return hydrateFromFindSC(response), nil
+}
+
+// fetchListSCSummaries запрашивает list_sc пачками, чтобы не превышать лимит длины sc_number в 1С.
+func (c *Client) fetchListSCSummaries(ctx context.Context, userID string, numbers []string) ([]models.TicketSummary, error) {
+	if len(numbers) == 0 {
+		return []models.TicketSummary{}, nil
+	}
+
+	merged := make([]models.TicketSummary, 0, len(numbers))
+	for start := 0; start < len(numbers); start += listSCMaxNumbersPerRequest {
+		end := start + listSCMaxNumbersPerRequest
+		if end > len(numbers) {
+			end = len(numbers)
+		}
+
+		form := url.Values{}
+		form.Set("id", strings.TrimSpace(userID))
+		form.Set("sc_number", strings.Join(numbers[start:end], ";"))
+
+		payload, err := c.doMultipartFormPostBytes(ctx, "/list_sc", form)
+		if err != nil {
+			return nil, err
+		}
+
+		batch, err := parseListSCResponse(payload)
+		if err != nil {
+			return nil, err
+		}
+		merged = append(merged, batch...)
+	}
+
+	return merged, nil
 }
 
 func normalizeServiceCallNumbers(serviceCalls []string) []string {
@@ -233,32 +258,69 @@ func (c *Client) hydrateTicketSummariesFromFindSC(ctx context.Context, userID st
 		return summaries
 	}
 
-	out := make([]models.TicketSummary, 0, len(summaries))
-	for _, summary := range summaries {
-		number := strings.TrimSpace(summary.Number)
-		if number == "" {
-			continue
-		}
-		if ticketSummaryHasListFields(summary) {
-			out = append(out, summary)
-			continue
-		}
-
-		detail, err := c.GetTicket(ctx, userID, number)
-		if err != nil {
-			c.logger.Warn(
-				"find_sc failed while hydrating my ticket summary",
-				"error", err,
-				"user_id", userID,
-				"ticket_number", number,
-				"request_id", middleware.RequestIDFromContext(ctx),
-			)
-			out = append(out, summary)
-			continue
-		}
-
-		out = append(out, ticketSummaryFromDetail(summary, detail))
+	hydrateCount := len(summaries)
+	if hydrateCount > myTicketHydrationMaxTickets {
+		hydrateCount = myTicketHydrationMaxTickets
 	}
+
+	hydrationCtx, cancelHydration := context.WithTimeout(ctx, myTicketHydrationTotalTimeout)
+	defer cancelHydration()
+
+	out := make([]models.TicketSummary, len(summaries))
+	copy(out, summaries)
+
+	sem := make(chan struct{}, myTicketHydrationConcurrency)
+	var wg sync.WaitGroup
+
+	for index := 0; index < hydrateCount; index++ {
+		summary := summaries[index]
+		number := strings.TrimSpace(summary.Number)
+		if number == "" || ticketSummaryHasListFields(summary) {
+			continue
+		}
+
+		wg.Add(1)
+		go func(index int, number string, fallback models.TicketSummary) {
+			defer wg.Done()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-hydrationCtx.Done():
+				return
+			}
+
+			ticketCtx, cancel := context.WithTimeout(hydrationCtx, myTicketHydrationTimeout)
+			defer cancel()
+
+			detail, err := c.GetTicket(ticketCtx, userID, number)
+			if err != nil {
+				c.logger.Warn(
+					"find_sc failed while hydrating my ticket summary",
+					"error", err,
+					"user_id", userID,
+					"ticket_number", number,
+					"request_id", middleware.RequestIDFromContext(ctx),
+				)
+				return
+			}
+
+			out[index] = ticketSummaryFromDetail(fallback, detail)
+		}(index, number, summary)
+	}
+	wg.Wait()
+
+	if errors.Is(hydrationCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		c.logger.Warn(
+			"my ticket summary hydration timed out",
+			"ticket_count", len(summaries),
+			"hydrated_limit", hydrateCount,
+			"timeout_ms", myTicketHydrationTotalTimeout.Milliseconds(),
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", userID,
+		)
+	}
+
 	return out
 }
 
@@ -1716,7 +1778,73 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, request models.CreateT
 		return models.TicketDetail{}, HTTPStatusError{StatusCode: response.StatusCode}
 	}
 
-	return parseCreateSCResponse(respBody, request)
+	detail, err := parseCreateSCResponse(respBody, request)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+
+	// 1С часто отвечает 200 с телом "" — номер заявки подтягиваем из find_employee + find_sc.
+	if strings.TrimSpace(detail.Number) == "" {
+		resolved, resolveErr := c.resolveTicketDetailAfterCreate(ctx, request)
+		if resolveErr == nil {
+			c.logger.Info(
+				"create_sc returned empty body, resolved ticket via find_employee/find_sc",
+				"number", resolved.Number,
+				"request_id", middleware.RequestIDFromContext(ctx),
+				"user_id", middleware.UserIDFromContext(ctx),
+			)
+			return resolved, nil
+		}
+		c.logger.Warn(
+			"create_sc returned empty body, could not resolve ticket number",
+			"error", resolveErr,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+	}
+
+	return detail, nil
+}
+
+// resolveTicketDetailAfterCreate ищет только что созданную заявку по свежему списку servicecalls и find_sc.
+func (c *Client) resolveTicketDetailAfterCreate(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
+	lookup, err := c.FindEmployeeByIdentifier(ctx, models.EmployeeLookupRequest{
+		Identifier:    strings.TrimSpace(request.UserID),
+		AttributeCode: "id",
+	})
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+
+	numbers := normalizeServiceCallNumbers(lookup.ServiceCalls)
+	if len(numbers) == 0 {
+		return models.TicketDetail{}, errors.New("no servicecalls after create")
+	}
+
+	wantTitle := strings.TrimSpace(request.Title)
+	wantDescription := strings.TrimSpace(request.Description)
+
+	// Свежие номера в начале servicecalls — достаточно нескольких find_sc, не обходим весь список.
+	const resolveAfterCreateMaxLookups = 5
+	lookupLimit := len(numbers)
+	if lookupLimit > resolveAfterCreateMaxLookups {
+		lookupLimit = resolveAfterCreateMaxLookups
+	}
+
+	for _, number := range numbers[:lookupLimit] {
+		detail, err := c.GetTicket(ctx, request.UserID, number)
+		if err != nil {
+			continue
+		}
+		if wantTitle != "" && strings.TrimSpace(detail.Title) == wantTitle {
+			return detail, nil
+		}
+		if wantDescription != "" && strings.TrimSpace(detail.Description) == wantDescription {
+			return detail, nil
+		}
+	}
+
+	return c.GetTicket(ctx, request.UserID, numbers[0])
 }
 
 // AddComment adds a new comment to a ticket.

@@ -15,10 +15,10 @@ http:
   host: 0.0.0.0
   # Bind port for the HTTP API inside the container.
   port: 3000
-  # Request read timeout.
-  read_timeout: 10s
-  # Response write timeout.
-  write_timeout: 20s
+  # Request read timeout (multipart create with attachments).
+  read_timeout: 60s
+  # Response write timeout must exceed itilium.timeout: create_sc on 1C can take 40–50s.
+  write_timeout: 90s
   # Keep-alive idle timeout.
   idle_timeout: 60s
 

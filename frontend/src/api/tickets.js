@@ -1,5 +1,7 @@
-import axios from '@/api/axios'
+import axios, { longRunningRequestTimeoutMs } from '@/api/axios'
 import urls from '@/api/urls'
+
+const longRunningConfig = { timeout: longRunningRequestTimeoutMs }
 
 /** Список «мои заявки». */
 const listMyTickets = () => {
@@ -15,13 +17,17 @@ const createTicket = (payload) => {
   const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
 
   if (files.length === 0) {
-    return axios.post(urls.myTickets, {
-      requestType: fields.requestType,
-      title: fields.title,
-      description: fields.description,
-      department: fields.department,
-      executionDate: fields.executionDate
-    })
+    return axios.post(
+      urls.myTickets,
+      {
+        requestType: fields.requestType,
+        title: fields.title,
+        description: fields.description,
+        department: fields.department,
+        executionDate: fields.executionDate
+      },
+      longRunningConfig
+    )
   }
 
   const formData = new FormData()
@@ -41,7 +47,7 @@ const createTicket = (payload) => {
     formData.append('attachments', file)
   })
 
-  return axios.post(urls.myTickets, formData)
+  return axios.post(urls.myTickets, formData, longRunningConfig)
 }
 
 /** Заявки, где пользователь в ответственных. */
@@ -125,7 +131,7 @@ const createMarketingRequest = (payload) => {
   const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
 
   if (files.length === 0) {
-    return axios.post(urls.marketingRequests, fields)
+    return axios.post(urls.marketingRequests, fields, longRunningConfig)
   }
 
   const formData = new FormData()
@@ -140,7 +146,7 @@ const createMarketingRequest = (payload) => {
     formData.append('attachments', file)
   })
 
-  return axios.post(urls.marketingRequests, formData)
+  return axios.post(urls.marketingRequests, formData, longRunningConfig)
 }
 
 export default {

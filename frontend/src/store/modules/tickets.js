@@ -4,10 +4,26 @@
  */
 import ticketsApi from '@/api/tickets'
 
+function isLongRunningClientFailure(error) {
+  const code = String(error?.code || '').toUpperCase()
+  const message = String(error?.message || '').toLowerCase()
+  return (
+    code === 'ECONNABORTED' ||
+    code === 'ERR_NETWORK' ||
+    /timeout/i.test(message) ||
+    /network error/i.test(message) ||
+    (!error?.response && message !== '')
+  )
+}
+
 function normalizeTicketError(error) {
   const backendMessage = error?.response?.data?.message
   const statusCode = error?.response?.status
   const rawMessage = String(backendMessage || error?.message || '').trim()
+
+  if (isLongRunningClientFailure(error)) {
+    return 'Создание заявки в ITILIUM может занять до минуты. Если появилась ошибка — откройте «Мои заявки» и обновите список: заявка могла уже создаться.'
+  }
 
   if (statusCode === 404 || /status 404/i.test(rawMessage)) {
     return 'Заявка не найдена в ITILIUM.'
@@ -29,6 +45,9 @@ function normalizeTicketError(error) {
   }
   if (/comment is required for ratings 0 through 2/i.test(rawMessage)) {
     return 'Для оценок 0, 1 и 2 укажите комментарий.'
+  }
+  if (statusCode === 502 || statusCode === 504 || statusCode === 408) {
+    return 'Сервер не успел ответить вовремя. Заявка могла уже создаться в ITILIUM — откройте «Мои заявки» и обновите список.'
   }
   if (statusCode >= 500) {
     return 'ITILIUM временно недоступен. Повторите попытку позже.'
@@ -419,7 +438,7 @@ const actions = {
         })
         .catch((error) => {
           context.commit(mutationTypes.createTicketFail, [normalizeTicketError(error)])
-          resolve(error)
+          reject(error)
         })
     })
   },
@@ -596,7 +615,7 @@ const actions = {
         })
         .catch((error) => {
           context.commit(mutationTypes.createMarketingRequestFail, [normalizeTicketError(error)])
-          resolve(error)
+          reject(error)
         })
     })
   }

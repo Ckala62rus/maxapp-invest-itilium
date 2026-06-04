@@ -401,8 +401,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
     createSubmitError.value = ''
     const isMarketingFlow = createTicketForm.value.requestType === 'Маркетинговая заявка'
-    const response = isMarketingFlow
-      ? await store.dispatch(ticketActionTypes.createMarketingRequest, {
+    const payload = isMarketingFlow
+      ? {
         serviceCode: selectedMarketingService.value?.code || '',
         formNumber: selectedMarketingService.value?.formNumber || '',
         subdivision: createTicketForm.value.department,
@@ -410,23 +410,40 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
         withoutDate: false,
         formData: marketingFormData.value,
         attachmentFiles: createTicketForm.value.attachmentFiles || []
-      })
-      : await store.dispatch(ticketActionTypes.createTicket, {
+      }
+      : {
         requestType: createTicketForm.value.requestType,
         title: createTicketForm.value.title,
         description: createTicketForm.value.description,
         department: createTicketForm.value.department,
         executionDate: createTicketForm.value.executionDate,
         attachmentFiles: createTicketForm.value.attachmentFiles || []
-      })
+      }
 
-    if (response?.data?.success) {
+    try {
+      const response = await (isMarketingFlow
+        ? store.dispatch(ticketActionTypes.createMarketingRequest, payload)
+        : store.dispatch(ticketActionTypes.createTicket, payload))
+
+      if (!response?.data?.success) {
+        createSubmitError.value = 'Не удалось подтвердить создание заявки. Проверьте «Мои заявки».'
+        return
+      }
+
       // После успешного создания очищаем вложения, чтобы не тащить File в следующую заявку.
       createTicketForm.value.attachmentFiles = []
       marketingFormData.value = {}
-      searchQuery.value = response?.data?.data?.number || ''
-      submitBanner.value = 'Заявка создана и открыта в карточке.'
-      activeScreen.value = 'details'
+      const ticketNumber = String(response?.data?.data?.number || '').trim()
+      searchQuery.value = ticketNumber
+      submitBanner.value = ticketNumber
+        ? 'Заявка создана и открыта в карточке.'
+        : 'Заявка передана в ITILIUM. Номер появится в списке «Мои заявки».'
+      activeScreen.value = ticketNumber ? 'details' : 'home'
+      if (!ticketNumber) {
+        await store.dispatch(ticketActionTypes.loadMyTickets)
+      }
+    } catch {
+      // Ошибка уже в createErrors / marketingErrors через Vuex.
     }
   }
 

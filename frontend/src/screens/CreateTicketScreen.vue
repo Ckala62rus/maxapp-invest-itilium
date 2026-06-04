@@ -246,6 +246,10 @@ function setMarketingField(key, value) {
         </div>
       </template>
 
+      <p v-if="isCreatingTicket || isCreatingMarketingRequest" class="status-pill">
+        Создание в ITILIUM может занять до минуты — не закрывайте приложение.
+      </p>
+
       <p v-if="createErrorMessage || marketingErrorMessage" class="status-pill rose">{{ createErrorMessage || marketingErrorMessage }}</p>
 
       <div class="upload-box">
