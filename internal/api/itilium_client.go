@@ -53,6 +53,9 @@ type HTTPStatusError struct {
 
 // Error formats the upstream status into a regular Go error string.
 func (e HTTPStatusError) Error() string {
+	if e.StatusCode == http.StatusRequestEntityTooLarge {
+		return "Вложение слишком большое для сервера ITILIUM. Уменьшите фото или отправьте заявку без файла."
+	}
 	return "itilium request failed with status " + strconv.Itoa(e.StatusCode)
 }
 
@@ -525,7 +528,7 @@ func (c *Client) doMultipartFormPostBytesWithFiles(ctx context.Context, path str
 			}
 		}
 	}
-	for _, fa := range files {
+	for _, fa := range prepareItiliumFileAttachments(files) {
 		part, err := writer.CreateFormFile("files", fa.Filename)
 		if err != nil {
 			return nil, fmt.Errorf("create form file: %w", err)
@@ -591,7 +594,7 @@ func (c *Client) doPostQueryWithMultipartForm(ctx context.Context, path string, 
 			}
 		}
 	}
-	for _, fa := range files {
+	for _, fa := range prepareItiliumFileAttachments(files) {
 		part, err := writer.CreateFormFile("files", fa.Filename)
 		if err != nil {
 			return nil, fmt.Errorf("create form file: %w", err)
@@ -1964,7 +1967,7 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, path string, request m
 		return models.TicketDetail{}, fmt.Errorf("write description: %w", err)
 	}
 
-	for _, fa := range request.FileAttachments {
+	for _, fa := range prepareItiliumFileAttachments(request.FileAttachments) {
 		part, err := mp.CreateFormFile("files", fa.Filename)
 		if err != nil {
 			return models.TicketDetail{}, fmt.Errorf("create form file: %w", err)
@@ -2187,7 +2190,7 @@ func (c *Client) doAddCommentMultipart(ctx context.Context, scNumber string, com
 		return fmt.Errorf("write comment_text: %w", err)
 	}
 
-	for _, fa := range request.FileAttachments {
+	for _, fa := range prepareItiliumFileAttachments(request.FileAttachments) {
 		part, err := mp.CreateFormFile("files", fa.Filename)
 		if err != nil {
 			return fmt.Errorf("create form file: %w", err)

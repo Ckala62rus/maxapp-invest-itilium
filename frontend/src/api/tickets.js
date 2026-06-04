@@ -1,5 +1,6 @@
 import axios, { longRunningRequestTimeoutMs } from '@/api/axios'
 import urls from '@/api/urls'
+import { prepareAttachmentFiles } from '@/utils/prepareAttachmentFiles'
 
 const longRunningConfig = { timeout: longRunningRequestTimeoutMs }
 
@@ -12,9 +13,10 @@ const listMyTickets = () => {
  * Создание заявки: без файлов — JSON; с файлами — multipart, как ожидает бэкенд
  * (поле `payload` со строкой JSON + части `attachments`).
  */
-const createTicket = (payload) => {
+const createTicket = async (payload) => {
   const { attachmentFiles, ...fields } = payload
-  const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+  const raw = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+  const files = await prepareAttachmentFiles(raw)
 
   if (files.length === 0) {
     return axios.post(
@@ -69,9 +71,10 @@ const getTicketDetails = (number) => {
  * Комментарий к заявке; ответ — обновлённая карточка.
  * Без файлов — JSON; с файлами — multipart (`payload` + части `attachments`), как при создании заявки.
  */
-const addComment = (number, payload) => {
+const addComment = async (number, payload) => {
   const { attachmentFiles, ...fields } = payload
-  const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+  const raw = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+  const files = await prepareAttachmentFiles(raw)
 
   if (files.length === 0) {
     return axios.post(urls.ticketComments(number), {
@@ -126,9 +129,10 @@ const listMarketingSubdivisions = () => {
 }
 
 /** Создать маркетинговую заявку (wizard 4 шага + динамические поля шага 4). */
-const createMarketingRequest = (payload) => {
+const createMarketingRequest = async (payload) => {
   const { attachmentFiles, ...fields } = payload
-  const files = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+  const raw = Array.isArray(attachmentFiles) ? attachmentFiles.filter((f) => f instanceof File) : []
+  const files = await prepareAttachmentFiles(raw)
 
   if (files.length === 0) {
     return axios.post(urls.marketingRequests, fields, longRunningConfig)
