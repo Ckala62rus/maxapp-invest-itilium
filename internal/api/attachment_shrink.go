@@ -13,10 +13,16 @@ import (
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
 )
 
-// Лимит тела на nginx перед 1С на itilium_test — по факту ~1 MiB (413 на ~8 MiB JPG).
-const itiliumAttachmentMaxBytes = 512 * 1024
+// Заявленный лимит ITILIUM для вложений — 20 MiB (подтверждено у заказчика).
+const itiliumAttachmentPolicyMaxBytes = 20 * 1024 * 1024
 
-const itiliumAttachmentMaxEdge = 1280
+// Верхняя граница отправки в 1С с небольшим запасом под multipart.
+const itiliumAttachmentMaxBytes = 19 * 1024 * 1024
+
+// Сжимаем только очень крупные фото с камеры; мелкие файлы не трогаем.
+const itiliumAttachmentCompressMinBytes = 4 * 1024 * 1024
+
+const itiliumAttachmentMaxEdge = 2048
 
 var imageFileExt = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
@@ -49,8 +55,7 @@ func shrinkImageAttachmentForItilium(fa models.FileAttachment) models.FileAttach
 	if !isImageAttachment(fa) {
 		return fa
 	}
-	// С камеры часто 3–10 MiB; пережимаем всё, что больше порога, даже если уже < 1 MiB.
-	if len(fa.Data) <= 200*1024 {
+	if len(fa.Data) <= itiliumAttachmentCompressMinBytes && len(fa.Data) <= itiliumAttachmentMaxBytes {
 		return fa
 	}
 

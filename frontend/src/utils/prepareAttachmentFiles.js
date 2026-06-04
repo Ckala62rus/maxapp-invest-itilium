@@ -1,15 +1,11 @@
 /**
- * Сжимает фото перед отправкой: nginx перед 1С (itilium_test) режет тело примерно от 1 MiB.
- * С камеры в MAX WebView часто приходит полноразмерный JPEG (несколько МБ), хотя в галерее видно «400 КБ».
+ * Сжимает только очень крупные фото. Политика ITILIUM — до 20 MiB на вложение.
+ * На тестовом контуре nginx перед 1С мог быть ниже (413 на ~8 MiB) — см. agent_context.
  */
 
-/** Запас под лимит nginx 1С (~1 MiB) с учётом multipart-обёртки. */
-const ITILIUM_SAFE_MAX_BYTES = 512 * 1024
-
-/** Всё, что больше — пережимаем (в т.ч. «небольшие» снимки с камеры). */
-const IMAGE_COMPRESS_MIN_BYTES = 200 * 1024
-
-const IMAGE_MAX_EDGE = 1280
+const ITILIUM_SAFE_MAX_BYTES = 19 * 1024 * 1024
+const IMAGE_COMPRESS_MIN_BYTES = 4 * 1024 * 1024
+const IMAGE_MAX_EDGE = 2048
 const JPEG_QUALITIES = [0.82, 0.68, 0.52, 0.38, 0.28]
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|heic|heif)$/i

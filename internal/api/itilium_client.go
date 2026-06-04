@@ -54,7 +54,7 @@ type HTTPStatusError struct {
 // Error formats the upstream status into a regular Go error string.
 func (e HTTPStatusError) Error() string {
 	if e.StatusCode == http.StatusRequestEntityTooLarge {
-		return "Вложение слишком большое для сервера ITILIUM. Уменьшите фото или отправьте заявку без файла."
+		return "Сервер ITILIUM отклонил размер файла (413). По политике допустимо до 20 МБ — попросите админов 1С проверить nginx на itilium_test (client_max_body_size). Пока уменьшите фото или отправьте без вложения."
 	}
 	return "itilium request failed with status " + strconv.Itoa(e.StatusCode)
 }
