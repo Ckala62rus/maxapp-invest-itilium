@@ -12,8 +12,8 @@ axios.defaults.baseURL =
     ? env.VITE_PUBLIC_API_BASE_URL
     : ''
 
-// create_sc в 1С часто отвечает 40+ секунд — короткий таймаут даёт ложную ошибку при успешном создании на бэкенде.
-const longRunningRequestTimeoutMs = 120000
+// create_sc в 1С с вложением может идти 1–2 минуты — ждём ответ до конца, без «проверьте список».
+const longRunningRequestTimeoutMs = 180000
 
 // Перед каждым запросом подмешиваем токен из storage; в DEV без токена — опционально X-User-ID для отладки.
 axios.interceptors.request.use((config) => {

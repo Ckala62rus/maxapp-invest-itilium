@@ -22,7 +22,7 @@ services:
       AUTH_MAX_INIT_DATA_TTL: ${AUTH_MAX_INIT_DATA_TTL:-10m}
       AUTH_ALLOW_DEBUG_IDENTITY_HEADERS: "false"
       HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-60s}
-      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-90s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-120s}
     volumes:
       - ./deploy/config/app.prod.yml:/app/config.yml:ro
     depends_on:

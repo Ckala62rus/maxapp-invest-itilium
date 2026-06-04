@@ -429,14 +429,14 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
     try {
       const response = await withBusyModal(
-        'Создаём заявку в ITILIUM…',
+        'Создаём заявку…',
         () => (isMarketingFlow
           ? store.dispatch(ticketActionTypes.createMarketingRequest, payload)
           : store.dispatch(ticketActionTypes.createTicket, payload))
       )
 
       if (!response?.data?.success) {
-        createSubmitError.value = 'Не удалось подтвердить создание заявки. Проверьте «Мои заявки».'
+        createSubmitError.value = 'Сервер вернул неожиданный ответ. Повторите отправку.'
         return
       }
 
