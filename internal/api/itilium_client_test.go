@@ -32,8 +32,18 @@ func TestFormatMarketingExecutionDateConvertsHTMLDate(t *testing.T) {
 
 	got := formatMarketingExecutionDate("2026-06-26")
 
-	if got != "26.06.2026" {
-		t.Fatalf("formatMarketingExecutionDate() = %q, want %q", got, "26.06.2026")
+	if got != "2026-06-26" {
+		t.Fatalf("formatMarketingExecutionDate() = %q, want %q", got, "2026-06-26")
+	}
+}
+
+func TestFormatMarketingExecutionDateConvertsDottedDate(t *testing.T) {
+	t.Parallel()
+
+	got := formatMarketingExecutionDate("26.06.2026")
+
+	if got != "2026-06-26" {
+		t.Fatalf("formatMarketingExecutionDate() = %q, want %q", got, "2026-06-26")
 	}
 }
 
@@ -97,8 +107,8 @@ func TestSplitMarketingCreateFormSeparatesDateFields(t *testing.T) {
 	if query.Get("ExecutionDate") != "" {
 		t.Fatalf("query must not contain ExecutionDate, got %q", query.Get("ExecutionDate"))
 	}
-	if dateBody.Get("ExecutionDate") != "08.07.2026" {
-		t.Fatalf("dateBody ExecutionDate = %q, want 08.07.2026", dateBody.Get("ExecutionDate"))
+	if dateBody.Get("ExecutionDate") != "2026-07-08" {
+		t.Fatalf("dateBody ExecutionDate = %q, want 2026-07-08", dateBody.Get("ExecutionDate"))
 	}
 	if len(dateBody) != 1 {
 		t.Fatalf("dateBody must contain only ExecutionDate, got %v", dateBody)
@@ -112,7 +122,7 @@ func TestMarketingDateFieldVariantsIncludeDocumentedExecutionDate(t *testing.T) 
 	if len(variants) == 0 {
 		t.Fatal("marketingDateFieldVariants() returned no variants")
 	}
-	if variants[0].Get("ExecutionDate") != "01.07.2026" {
-		t.Fatalf("first variant ExecutionDate = %q, want 01.07.2026", variants[0].Get("ExecutionDate"))
+	if variants[0].Get("ExecutionDate") != "2026-07-01" {
+		t.Fatalf("first variant ExecutionDate = %q, want 2026-07-01", variants[0].Get("ExecutionDate"))
 	}
 }

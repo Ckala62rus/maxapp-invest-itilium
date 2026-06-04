@@ -1010,10 +1010,10 @@ func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url
 
 	var lastPayload []byte
 
-	// Сначала — документированный вариант: все поля в query, дата одним ExecutionDate.
-	if dotted := formatMarketingExecutionDate(rawExecutionDate); dotted != "" {
+	// Сначала — все поля в query, дата в формате YYYY-MM-DD (контракт 1С после фикса).
+	if isoDate := formatMarketingExecutionDate(rawExecutionDate); isoDate != "" {
 		singleDateQuery := cloneURLValues(query)
-		singleDateQuery.Set("ExecutionDate", dotted)
+		singleDateQuery.Set("ExecutionDate", isoDate)
 		payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, singleDateQuery)
 		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
 			return payload, nil
@@ -1189,42 +1189,20 @@ func setMarketingExecutionDateAliases(form url.Values, rawDate string) {
 }
 
 func appendMarketingExecutionDateAliases(form url.Values, rawDate string) {
-	trimmed := strings.TrimSpace(rawDate)
-	if trimmed == "" {
+	isoDate := formatMarketingExecutionDate(rawDate)
+	if isoDate == "" {
 		return
 	}
 
-	dotted := formatMarketingExecutionDate(trimmed)
-	isoDate := trimmed
-	if parsed, err := time.Parse("2006-01-02", trimmed); err == nil {
-		isoDate = parsed.Format("2006-01-02")
-		if dotted == "" {
-			dotted = parsed.Format("02.01.2006")
-		}
-	}
-	dottedWithTime := dotted
-	if dotted != "" {
-		dottedWithTime = dotted + " 0:00:00"
-	}
-	dottedWithNine := dotted
-	if dotted != "" {
-		dottedWithNine = dotted + " 9:00:00"
-	}
-
+	// 1С на тестовом контуре принимает дату как YYYY-MM-DD (например 2026-06-04).
 	for key, value := range map[string]string{
-		"ExecutionDate":          dotted,
-		"executionDate":          dotted,
-		"ДатаИсполнения":         dottedWithTime,
-		"ЖелаемаяДатаИсполнения": dottedWithTime,
-		"DesiredExecutionDate":   dotted,
-		"deadlineDate":           dottedWithTime,
-		"Date":                   dotted,
-		"ExecutionDateTime":      dottedWithTime,
+		"ExecutionDate":          isoDate,
+		"executionDate":          isoDate,
+		"ДатаИсполнения":         isoDate,
+		"ЖелаемаяДатаИсполнения": isoDate,
+		"DesiredExecutionDate":   isoDate,
 		"ExecutionDateISO":       isoDate,
-		"date_inc":               dotted,
-		"СрокИсполнения":         dottedWithTime,
-		"ДатаВыполнения":         dottedWithNine,
-		"ЖелаемаяДата":           dottedWithTime,
+		"date_inc":               isoDate,
 	} {
 		if value != "" {
 			form.Set(key, value)
@@ -1251,33 +1229,20 @@ func marketingExecutionDateFieldKeys() map[string]struct{} {
 }
 
 func marketingDateFieldVariants(rawDate string) []url.Values {
-	dotted := formatMarketingExecutionDate(rawDate)
-	if dotted == "" {
+	isoDate := formatMarketingExecutionDate(rawDate)
+	if isoDate == "" {
 		return nil
-	}
-	withTimeZero := dotted + " 0:00:00"
-	withTimeNine := dotted + " 9:00:00"
-	isoDate := strings.TrimSpace(rawDate)
-	if parsed, err := time.Parse("2006-01-02", rawDate); err == nil {
-		isoDate = parsed.Format("2006-01-02")
 	}
 
 	candidates := []struct {
 		key   string
 		value string
 	}{
-		{"ExecutionDate", dotted},
-		{"ExecutionDate", withTimeNine},
-		{"ExecutionDate", withTimeZero},
-		{"ЖелаемаяДатаИсполнения", withTimeZero},
-		{"ДатаИсполнения", withTimeZero},
-		{"date_inc", dotted},
-		{"СрокИсполнения", withTimeZero},
-		{"ДатаВыполнения", withTimeNine},
-		{"DesiredExecutionDate", dotted},
-		{"deadlineDate", withTimeZero},
-		{"ExecutionDateISO", isoDate},
-		{"ЖелаемаяДата", withTimeZero},
+		{"ExecutionDate", isoDate},
+		{"ЖелаемаяДатаИсполнения", isoDate},
+		{"ДатаИсполнения", isoDate},
+		{"DesiredExecutionDate", isoDate},
+		{"date_inc", isoDate},
 	}
 
 	variants := make([]url.Values, 0, len(candidates))
@@ -1306,25 +1271,19 @@ func splitMarketingCreateForm(form url.Values) (url.Values, url.Values) {
 }
 
 func minimalMarketingDateBodyVariants(rawDate string) []url.Values {
-	dotted := formatMarketingExecutionDate(rawDate)
-	if dotted == "" {
+	isoDate := formatMarketingExecutionDate(rawDate)
+	if isoDate == "" {
 		return nil
-	}
-	withTime := dotted + " 0:00:00"
-	isoDate := strings.TrimSpace(rawDate)
-	if parsed, err := time.Parse("2006-01-02", rawDate); err == nil {
-		isoDate = parsed.Format("2006-01-02")
 	}
 
 	return []url.Values{
-		{"ExecutionDate": {dotted}},
-		{"ЖелаемаяДатаИсполнения": {withTime}},
-		{"ДатаИсполнения": {withTime}},
-		{"ExecutionDate": {withTime}},
-		{"ExecutionDateISO": {isoDate}},
+		{"ExecutionDate": {isoDate}},
+		{"ЖелаемаяДатаИсполнения": {isoDate}},
+		{"ДатаИсполнения": {isoDate}},
 	}
 }
 
+// formatMarketingExecutionDate нормализует дату для create_sc_Marketing в формат YYYY-MM-DD.
 func formatMarketingExecutionDate(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -1332,7 +1291,10 @@ func formatMarketingExecutionDate(value string) string {
 	}
 
 	if parsed, err := time.Parse("2006-01-02", trimmed); err == nil {
-		return parsed.Format("02.01.2006")
+		return parsed.Format("2006-01-02")
+	}
+	if parsed, err := time.Parse("02.01.2006", trimmed); err == nil {
+		return parsed.Format("2006-01-02")
 	}
 
 	return trimmed

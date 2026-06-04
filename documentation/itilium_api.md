@@ -562,7 +562,7 @@
 ### `POST /create_sc_Marketing`
 
 - Отправляется как `multipart/form-data`.
-- Общие поля: `id`, `Services`, `Subdivision`, `ExecutionDate` (ожидаемый формат `ДД.ММ.ГГГГ`, когда дата используется), опционально части `files`.
+- Общие поля: `id`, `Services`, `Subdivision`, `ExecutionDate` (формат `YYYY-MM-DD`, например `2026-06-04`, когда дата используется), опционально части `files`.
 - На 2026-04-29 `Subdivision` и `ExecutionDate` намеренно отправляются пустыми из backend, чтобы проверить live-поведение 1С после упрощения формы в mini app.
 - Для услуги `Дизайн` добавляются поля: `LayoutName`, `Size`, `ForWhat`, `RequiredText`, `LayoutFormats`, опционально `LinkToFoto`, `LinkToExamples`.
 - Для услуги `Мероприятие` добавляются поля: `ThemeEvent`, `Description`, `Budget`, опционально `LinkToFoto`, `LinkToExamples`.

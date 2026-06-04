@@ -1,0 +1,563 @@
+{
+  "info": {
+    "name": "ITILIUM Raw API (hs/Max)",
+    "_postman_id": "9d66f186-ccf9-4f44-9087-a31f069586dd",
+    "description": "Raw ITILIUM endpoints collection for direct debugging of 1C publication.\n\nCollection auth: Basic Auth (itiliumLogin / itiliumPassword).\n\nVariables:\n- itiliumBaseUrl: e.g. https://1c.tdbars.ru/itilium_test/hs/Max\n- userId: MAX user identifier used as id/telegram\n- ticketNumber: incident number\n- responsibleId: target responsible employee id\n- newState: target workflow state",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{itiliumLogin}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{itiliumPassword}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "itiliumBaseUrl",
+      "value": "https://1c.tdbars.ru/itilium_test/hs/Max"
+    },
+    {
+      "key": "itiliumLogin",
+      "value": ""
+    },
+    {
+      "key": "itiliumPassword",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": "40367639"
+    },
+    {
+      "key": "ticketNumber",
+      "value": "0000019683"
+    },
+    {
+      "key": "responsibleId",
+      "value": "0000000258"
+    },
+    {
+      "key": "newState",
+      "value": "04_В работе"
+    }
+  ],
+  "item": [
+    {
+      "name": "User And Lookup",
+      "item": [
+        {
+          "name": "find_employee (POST form)",
+          "description": "Поиск сотрудника в ITILIUM по id. Возвращает профиль, UUID, servicecalls и флаги доступа.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/find_employee",
+            "description": "Поиск сотрудника в ITILIUM по id. Возвращает профиль, UUID, servicecalls и флаги доступа."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "find_sc (GET)",
+          "description": "Получение полной карточки заявки по номеру (sc_number).",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/find_sc?id={{userId}}&sc_number={{ticketNumber}}",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "find_sc"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "sc_number",
+                  "value": "{{ticketNumber}}",
+                  "description": "Номер заявки (service call), по которой выполняется операция."
+                }
+              ]
+            },
+            "description": "Получение полной карточки заявки по номеру (sc_number)."
+          }
+        },
+        {
+          "name": "list_sc (POST form)",
+          "description": "Список заявок пользователя через legacy list_sc.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "sc_number",
+                  "value": "{{ticketNumber}}",
+                  "type": "text",
+                  "description": "Номер заявки (service call), по которой выполняется операция."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/list_sc",
+            "description": "Список заявок пользователя через legacy list_sc."
+          }
+        },
+        {
+          "name": "list_sc_responsible (POST multipart)",
+          "description": "Список заявок в ответственности текущего пользователя.",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/list_sc_responsible",
+            "description": "Список заявок в ответственности текущего пользователя."
+          }
+        },
+        {
+          "name": "create_sc (POST multipart)",
+          "description": "Создание обычной заявки напрямую в 1С ITILIUM.",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "shortDescription",
+                  "value": "Тестовая заявка",
+                  "type": "text",
+                  "description": "Краткая тема новой заявки."
+                },
+                {
+                  "key": "description",
+                  "value": "Описание тестовой заявки из Postman",
+                  "type": "text",
+                  "description": "Подробное описание заявки/маркетинговой задачи."
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "",
+                  "description": "Файл-вложение (можно указать несколько частей files)."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/create_sc",
+            "description": "Создание обычной заявки напрямую в 1С ITILIUM."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Comments",
+      "item": [
+        {
+          "name": "add_comment (POST multipart)",
+          "description": "Добавление комментария к заявке (с опциональным файлом files).",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "source",
+                  "value": "{{ticketNumber}}",
+                  "type": "text",
+                  "description": "Источник комментария: номер заявки."
+                },
+                {
+                  "key": "source_type",
+                  "value": "servicecall",
+                  "type": "text",
+                  "description": "Тип источника; для заявок обычно servicecall."
+                },
+                {
+                  "key": "comment_text",
+                  "value": "Комментарий из Postman",
+                  "type": "text",
+                  "description": "Текст комментария пользователя."
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "",
+                  "description": "Файл-вложение (можно указать несколько частей files)."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/add_comment",
+            "description": "Добавление комментария к заявке (с опциональным файлом files)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workflow",
+      "item": [
+        {
+          "name": "change_state_sc (POST multipart)",
+          "description": "Смена статуса заявки. Можно передать comment и date_inc при необходимости.",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "telegram",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя для legacy-параметра telegram (обычно совпадает с userId)."
+                },
+                {
+                  "key": "inc_number",
+                  "value": "{{ticketNumber}}",
+                  "type": "text",
+                  "description": "Номер инцидента/заявки для workflow-операций."
+                },
+                {
+                  "key": "new_state",
+                  "value": "{{newState}}",
+                  "type": "text",
+                  "description": "Целевой статус, в который нужно перевести заявку."
+                },
+                {
+                  "key": "comment",
+                  "value": "Смена статуса из Postman",
+                  "type": "text",
+                  "description": "Комментарий к смене статуса или оценке."
+                },
+                {
+                  "key": "date_inc",
+                  "value": "2026-07-01",
+                  "type": "text",
+                  "description": "Legacy-поле даты при смене статуса/маркетинге."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/change_state_sc",
+            "description": "Смена статуса заявки. Можно передать comment и date_inc при необходимости."
+          }
+        },
+        {
+          "name": "responsibles_sc (POST query)",
+          "description": "Получение доступных ответственных для выбранной заявки.",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/responsibles_sc?id={{userId}}&sc_number={{ticketNumber}}",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "responsibles_sc"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "sc_number",
+                  "value": "{{ticketNumber}}",
+                  "description": "Номер заявки (service call), по которой выполняется операция."
+                }
+              ]
+            },
+            "description": "Получение доступных ответственных для выбранной заявки."
+          }
+        },
+        {
+          "name": "change_responsible_sc (POST multipart)",
+          "description": "Смена ответственного сотрудника по responsibleEmployeeId.",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "telegram",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя для legacy-параметра telegram (обычно совпадает с userId)."
+                },
+                {
+                  "key": "inc_number",
+                  "value": "{{ticketNumber}}",
+                  "type": "text",
+                  "description": "Номер инцидента/заявки для workflow-операций."
+                },
+                {
+                  "key": "responsibleEmployeeId",
+                  "value": "{{responsibleId}}",
+                  "type": "text",
+                  "description": "ID сотрудника, на которого переводим ответственность."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/change_responsible_sc",
+            "description": "Смена ответственного сотрудника по responsibleEmployeeId."
+          }
+        },
+        {
+          "name": "confirm_sc (POST query)",
+          "description": "Оценка/подтверждение заявки (mark 0..5, comment_text опционально).",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/confirm_sc?telegram={{userId}}&incident={{ticketNumber}}&mark=5&comment_text=Оценка%20из%20Postman",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "confirm_sc"
+              ],
+              "query": [
+                {
+                  "key": "telegram",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя для legacy-параметра telegram (обычно совпадает с userId)."
+                },
+                {
+                  "key": "incident",
+                  "value": "{{ticketNumber}}",
+                  "description": "Номер заявки для confirm_sc."
+                },
+                {
+                  "key": "mark",
+                  "value": "5",
+                  "description": "Оценка выполнения заявки (обычно 0..5)."
+                },
+                {
+                  "key": "comment_text",
+                  "value": "Оценка%20из%20Postman",
+                  "description": "Текст комментария пользователя."
+                }
+              ]
+            },
+            "description": "Оценка/подтверждение заявки (mark 0..5, comment_text опционально)."
+          }
+        },
+        {
+          "name": "vote_change (POST query)",
+          "description": "Legacy голосование в workflow (используется не на всех контурах).",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/vote_change?id={{userId}}&inc_number={{ticketNumber}}&vote=yes",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "vote_change"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "inc_number",
+                  "value": "{{ticketNumber}}",
+                  "description": "Номер инцидента/заявки для workflow-операций."
+                },
+                {
+                  "key": "vote",
+                  "value": "yes",
+                  "description": "Результат голосования в vote_change (yes/no)."
+                }
+              ]
+            },
+            "description": "Legacy голосование в workflow (используется не на всех контурах)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Marketing",
+      "item": [
+        {
+          "name": "listServicesMarketing (GET)",
+          "description": "Справочник маркетинговых услуг и номеров форм.",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/listServicesMarketing?id={{userId}}",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "listServicesMarketing"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                }
+              ]
+            },
+            "description": "Справочник маркетинговых услуг и номеров форм."
+          }
+        },
+        {
+          "name": "listSubdivisionMarketing (GET)",
+          "description": "Справочник подразделений для маркетинговых заявок.",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/listSubdivisionMarketing?id={{userId}}",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "listSubdivisionMarketing"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                }
+              ]
+            },
+            "description": "Справочник подразделений для маркетинговых заявок."
+          }
+        },
+        {
+          "name": "create_sc_Marketing (POST multipart)",
+          "description": "Создание маркетинговой заявки (услуга, подразделение, дата исполнения, поля формы, файлы).",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "type": "text",
+                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                },
+                {
+                  "key": "Services",
+                  "value": "SMM",
+                  "type": "text",
+                  "description": "Маркетинговая услуга (например SMM, Дизайн, Мероприятие)."
+                },
+                {
+                  "key": "Subdivision",
+                  "value": "Банкетный зал 'Время Счастья'",
+                  "type": "text",
+                  "description": "Подразделение-инициатор маркетинговой заявки."
+                },
+                {
+                  "key": "ExecutionDate",
+                  "value": "2026-07-01",
+                  "type": "text",
+                  "description": "Желаемая дата исполнения в формате YYYY-MM-DD (например 2026-06-04)."
+                },
+                {
+                  "key": "FormNumber",
+                  "value": "3",
+                  "type": "text",
+                  "description": "Номер формы маркетинговой услуги из 1С."
+                },
+                {
+                  "key": "Description",
+                  "value": "Маркетинговая заявка из Postman",
+                  "type": "text",
+                  "description": "Параметр Description."
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "",
+                  "description": "Файл-вложение (можно указать несколько частей files)."
+                }
+              ]
+            },
+            "url": "{{itiliumBaseUrl}}/create_sc_Marketing",
+            "description": "Создание маркетинговой заявки (услуга, подразделение, дата исполнения, поля формы, файлы)."
+          }
+        }
+      ]
+    }
+  ]
+}
