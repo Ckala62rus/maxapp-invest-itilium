@@ -34,5 +34,12 @@ export async function withBusyModal(title, task) {
     return await task()
   } finally {
     Swal.close()
+    document.body.classList.remove('swal2-shown', 'swal2-height-auto')
+    document.documentElement.classList.remove('swal2-shown')
+    const container = Swal.getContainer()
+    if (container) {
+      container.style.pointerEvents = ''
+      container.style.display = ''
+    }
   }
 }

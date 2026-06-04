@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 
-import { getMaxBridgeLaunchData, notifyMaxAppReady } from '@/api/maxBridge'
+import { configureMaxWebApp, getMaxBridgeLaunchData } from '@/api/maxBridge'
 import {
   actionTypes as authActionTypes,
   getterTypes as authGetterTypes
@@ -113,7 +113,7 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
   }, { immediate: true })
 
   async function bootstrapAuth() {
-    notifyMaxAppReady()
+    configureMaxWebApp()
 
     const launchData = getMaxBridgeLaunchData()
     maxBridgeState.value = launchData

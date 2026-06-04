@@ -478,7 +478,7 @@ const statusDateHint = computed(() => {
       </div>
 
       <div v-if="isActionGridVisible" class="action-grid">
-        <button class="secondary-button" :disabled="isSubmittingComment" @click="openCommentPanel">Добавить комментарий</button>
+        <button type="button" class="secondary-button" :disabled="isSubmittingComment" @click="openCommentPanel">Добавить комментарий</button>
         <button
           v-if="selectedTicket.canChangeStatus"
           class="secondary-button"
@@ -579,7 +579,7 @@ const statusDateHint = computed(() => {
           </button>
         </div>
         <div class="hero-actions">
-          <button class="ghost-button" :disabled="isSubmittingComment" @click="closeCommentPanel">Назад</button>
+          <button type="button" class="ghost-button" :disabled="isSubmittingComment" @click="closeCommentPanel">Назад</button>
         </div>
       </div>
     </article>
@@ -625,7 +625,7 @@ const statusDateHint = computed(() => {
         </button>
       </div>
       <div class="hero-actions">
-        <button class="ghost-button" :disabled="isChangingStatus" @click="closeStatusSelection">Назад</button>
+        <button type="button" class="ghost-button" :disabled="isChangingStatus" @click="closeStatusSelection">Назад</button>
       </div>
     </article>
 
@@ -743,7 +743,7 @@ const statusDateHint = computed(() => {
         </div>
       </div>
       <div class="hero-actions">
-        <button class="ghost-button" :disabled="isChangingResponsible" @click="closeResponsibleSelection">Назад</button>
+        <button type="button" class="ghost-button" :disabled="isChangingResponsible" @click="closeResponsibleSelection">Назад</button>
       </div>
     </article>
   </section>

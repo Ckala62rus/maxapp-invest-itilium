@@ -81,6 +81,7 @@ function setTicketsPage(page) {
       <button
         v-for="page in pageCount"
         :key="page"
+        type="button"
         class="page-button"
         :class="{ active: page === currentTicketsPage }"
         @click="setTicketsPage(page)"

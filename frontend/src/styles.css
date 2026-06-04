@@ -760,6 +760,13 @@ textarea {
 
 .ticket-card {
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.ticket-card:active {
+  transform: translateY(1px);
 }
 
 .ticket-card h3,
@@ -838,11 +845,15 @@ textarea {
 
 /* SweetAlert2 theme: приводим confirm-окна к тёмному стилю mini app. */
 body:not(.swal2-shown) .swal2-container {
+  display: none !important;
+  visibility: hidden !important;
   pointer-events: none !important;
 }
 
 body.swal2-shown .swal2-container,
 .swal2-container.swal2-shown {
+  display: flex !important;
+  visibility: visible !important;
   pointer-events: auto !important;
 }
 
