@@ -16,6 +16,7 @@ import SearchTicketScreen from '@/screens/SearchTicketScreen.vue'
 import TicketDetailsScreen from '@/screens/TicketDetailsScreen.vue'
 import { useAuthFlow } from '@/composables/useAuthFlow'
 import { useTicketFlow } from '@/composables/useTicketFlow'
+import { purgeTouchBlockers } from '@/helpers/purgeTouchBlockers'
 
 const store = useStore()
 
@@ -144,6 +145,7 @@ const {
 })
 
 onMounted(() => {
+  purgeTouchBlockers()
   bootstrapAuth().then((response) => {
     const user = response?.data?.user || null
     if (response?.data?.stage === 'ready' && user?.employeeFound) {

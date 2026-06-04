@@ -5,6 +5,83 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>MAX ITILIUM Mini App Prototype</title>
     <script src="https://st.max.ru/js/max-web-app.js"></script>
+    <script>
+      (function () {
+        var SELECTOR =
+          'button,a[href],.ticket-card,.menu-toggle,.burger-menu-item,.primary-button,.secondary-button,.ghost-button,.page-button'
+        var sx = 0
+        var sy = 0
+        var startEl = null
+        var lastEl = null
+        var lastAt = 0
+
+        function activate(el) {
+          if (!el || el.disabled) return
+          var now = Date.now()
+          if (el === lastEl && now - lastAt < 400) return
+          lastEl = el
+          lastAt = now
+          window.setTimeout(function () {
+            el.click()
+          }, 0)
+        }
+
+        function purgeOverlays() {
+          document.body.classList.remove('swal2-shown', 'swal2-height-auto')
+          document.documentElement.classList.remove('swal2-shown')
+          document.querySelectorAll('.swal2-container').forEach(function (node) {
+            if (document.body.classList.contains('swal2-shown')) return
+            node.style.display = 'none'
+            node.style.visibility = 'hidden'
+            node.style.pointerEvents = 'none'
+          })
+        }
+
+        document.addEventListener(
+          'touchstart',
+          function (e) {
+            var t = e.touches && e.touches[0]
+            if (!t) return
+            sx = t.clientX
+            sy = t.clientY
+            startEl = e.target && e.target.closest ? e.target.closest(SELECTOR) : null
+          },
+          { capture: true, passive: true }
+        )
+
+        document.addEventListener(
+          'touchend',
+          function (e) {
+            var t = e.changedTouches && e.changedTouches[0]
+            if (!t) return
+            var el =
+              (e.target && e.target.closest && e.target.closest(SELECTOR)) || startEl
+            startEl = null
+            if (!el) return
+            if (Math.abs(t.clientX - sx) > 14 || Math.abs(t.clientY - sy) > 14) return
+            activate(el)
+          },
+          { capture: true, passive: true }
+        )
+
+        function maxBoot() {
+          purgeOverlays()
+          var w = window.WebApp
+          if (!w) return
+          try {
+            if (typeof w.ready === 'function') w.ready()
+          } catch (err) {}
+          try {
+            if (typeof w.disableVerticalSwipes === 'function') w.disableVerticalSwipes()
+          } catch (err) {}
+        }
+
+        window.__maxappTouchBridgeInstalled = true
+        maxBoot()
+        document.addEventListener('DOMContentLoaded', maxBoot)
+        window.addEventListener('pageshow', purgeOverlays)
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

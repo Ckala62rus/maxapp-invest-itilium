@@ -18,7 +18,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  touch-action: manipulation;
+  touch-action: pan-y;
   background:
     radial-gradient(circle at top, rgba(38, 97, 255, 0.25), transparent 28%),
     linear-gradient(180deg, #0b1527 0%, #08101c 100%);
@@ -40,6 +40,15 @@ button {
 
 #app {
   min-height: 100vh;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+.phone-stage,
+.phone-frame,
+.screen {
+  touch-action: manipulation;
+  pointer-events: auto;
 }
 
 .prototype-shell {

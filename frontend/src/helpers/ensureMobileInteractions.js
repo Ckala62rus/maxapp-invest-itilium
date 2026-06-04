@@ -1,4 +1,4 @@
-import { getMaxWebAppPlatform } from '@/api/maxBridge'
+import { purgeTouchBlockers } from '@/helpers/purgeTouchBlockers'
 
 const INTERACTIVE_SELECTOR = [
   'button',
@@ -15,25 +15,14 @@ const INTERACTIVE_SELECTOR = [
   '.responsible-group-header:not(:disabled)'
 ].join(', ')
 
-const TOUCH_MOVE_THRESHOLD_PX = 12
-const TOUCH_CLICK_GUARD_MS = 450
+const TOUCH_MOVE_THRESHOLD_PX = 14
+const TAP_DEBOUNCE_MS = 400
 
 let touchStartX = 0
 let touchStartY = 0
 let touchStartTarget = null
 let lastSyntheticTarget = null
 let lastSyntheticClickAt = 0
-
-function isAndroidMaxWebView() {
-  const platform = getMaxWebAppPlatform()
-  if (platform === 'android') {
-    return true
-  }
-  if (platform) {
-    return false
-  }
-  return /android/i.test(navigator.userAgent || '')
-}
 
 function findInteractiveTarget(node) {
   if (!(node instanceof Element)) {
@@ -42,32 +31,44 @@ function findInteractiveTarget(node) {
   return node.closest(INTERACTIVE_SELECTOR)
 }
 
-function isDisabledInteractive(element) {
-  if (!element) {
+function shouldInstallTapBridge() {
+  if (window.__maxappTouchBridgeInstalled) {
+    return false
+  }
+  if (window.WebApp) {
     return true
   }
-  if (element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true') {
+  if (window.matchMedia('(pointer: coarse)').matches) {
     return true
   }
-  if (element.closest('.swal2-container') && !document.body.classList.contains('swal2-shown')) {
-    return true
+  return /android|iphone|ipad|mobile/i.test(navigator.userAgent || '')
+}
+
+function activateTarget(target) {
+  const now = Date.now()
+  if (target === lastSyntheticTarget && now - lastSyntheticClickAt < TAP_DEBOUNCE_MS) {
+    return
   }
-  return false
+  lastSyntheticTarget = target
+  lastSyntheticClickAt = now
+  window.setTimeout(() => {
+    target.click()
+  }, 0)
 }
 
 /**
- * На Android WebView MAX синтетический click после touchend часто не доходит до Vue.
- * Для короткого tap без сдвига вызываем element.click() сами.
+ * На Android WebView MAX синтетический click часто не доходит до Vue — дублируем tap через touchend/pointerup.
  */
-function installAndroidTapBridge() {
-  if (!isAndroidMaxWebView()) {
+function installMobileTapBridge() {
+  if (!shouldInstallTapBridge()) {
     return
   }
+  window.__maxappTouchBridgeInstalled = true
 
   document.addEventListener(
     'touchstart',
     (event) => {
-      const touch = event.changedTouches?.[0]
+      const touch = event.touches?.[0] ?? event.changedTouches?.[0]
       if (!touch) {
         return
       }
@@ -88,7 +89,7 @@ function installAndroidTapBridge() {
 
       const target = findInteractiveTarget(event.target) || touchStartTarget
       touchStartTarget = null
-      if (!target || isDisabledInteractive(target)) {
+      if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') {
         return
       }
 
@@ -98,26 +99,33 @@ function installAndroidTapBridge() {
         return
       }
 
-      if (event.cancelable) {
-        event.preventDefault()
-      }
+      activateTarget(target)
+    },
+    { passive: true, capture: true }
+  )
 
-      const now = Date.now()
-      if (target === lastSyntheticTarget && now - lastSyntheticClickAt < TOUCH_CLICK_GUARD_MS) {
+  document.addEventListener(
+    'pointerup',
+    (event) => {
+      if (event.pointerType !== 'touch') {
         return
       }
-      lastSyntheticTarget = target
-      lastSyntheticClickAt = now
-      target.click()
+      const target = findInteractiveTarget(event.target)
+      if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') {
+        return
+      }
+      activateTarget(target)
     },
-    { passive: false, capture: true }
+    { passive: true, capture: true }
   )
 }
 
 /**
- * В WebView MAX кнопки без type="button" и скрытый SweetAlert2 ломают tap.
+ * В WebView MAX кнопки без type="button" и скрытые оверлеи ломают tap.
  */
 export function ensureMobileInteractions() {
+  purgeTouchBlockers()
+
   const patchButtons = (root) => {
     if (!root?.querySelectorAll) {
       return
@@ -128,7 +136,7 @@ export function ensureMobileInteractions() {
   }
 
   patchButtons(document.body)
-  installAndroidTapBridge()
+  installMobileTapBridge()
 
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -140,6 +148,9 @@ export function ensureMobileInteractions() {
           node.type = 'button'
         }
         patchButtons(node)
+        if (node.matches?.('.swal2-container') || node.querySelector?.('.swal2-container')) {
+          purgeTouchBlockers()
+        }
       })
     })
   })

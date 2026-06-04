@@ -1,6 +1,7 @@
 import Swal from 'sweetalert2'
 
 import { swalConfirmClasses } from '@/helpers/confirmDialog'
+import { purgeTouchBlockers } from '@/helpers/purgeTouchBlockers'
 
 const busyPopupClass = {
   popup: `${swalConfirmClasses.popup} maxapp-swal-busy`
@@ -34,12 +35,6 @@ export async function withBusyModal(title, task) {
     return await task()
   } finally {
     Swal.close()
-    document.body.classList.remove('swal2-shown', 'swal2-height-auto')
-    document.documentElement.classList.remove('swal2-shown')
-    const container = Swal.getContainer()
-    if (container) {
-      container.style.pointerEvents = ''
-      container.style.display = ''
-    }
+    purgeTouchBlockers()
   }
 }
