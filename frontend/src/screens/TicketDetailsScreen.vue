@@ -1,7 +1,7 @@
 <script setup>
 // Карточка: таймлайн, смена статуса, ответственный, комментарии.
 import { computed, ref, watch } from 'vue'
-import Swal from 'sweetalert2'
+import { confirmAction } from '@/helpers/confirmDialog'
 import { validateStatusTransition } from '@/helpers/ticketWorkflow'
 
 const props = defineProps({
@@ -320,21 +320,11 @@ async function chooseStatus(status, statusForm) {
     return
   }
   statusChangeError.value = ''
-  const result = await Swal.fire({
+  const result = await confirmAction({
     title: 'Смена статуса',
     text: `Сменить статус заявки на «${status}»?`,
-    icon: 'question',
-    showCancelButton: true,
     confirmButtonText: 'Да, сменить',
-    cancelButtonText: 'Отмена',
-    reverseButtons: true,
-    focusCancel: true,
-    customClass: {
-      popup: 'maxapp-swal-popup',
-      confirmButton: 'maxapp-swal-confirm',
-      cancelButton: 'maxapp-swal-cancel'
-    },
-    buttonsStyling: true
+    cancelButtonText: 'Отмена'
   })
   if (!result.isConfirmed) {
     return

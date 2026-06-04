@@ -1,7 +1,17 @@
 import Swal from 'sweetalert2'
 
+import { swalConfirmClasses } from '@/helpers/confirmDialog'
+
 const busyPopupClass = {
-  popup: 'maxapp-swal-popup maxapp-swal-busy'
+  popup: `${swalConfirmClasses.popup} maxapp-swal-busy`
+}
+
+function enableBusyModalInteraction(popup) {
+  const container = Swal.getContainer()
+  if (container) {
+    container.style.pointerEvents = 'auto'
+  }
+  popup?.style.setProperty('pointer-events', 'auto')
 }
 
 /**
@@ -15,7 +25,9 @@ export async function withBusyModal(title, task) {
     showCancelButton: false,
     allowOutsideClick: false,
     allowEscapeKey: false,
-    customClass: busyPopupClass
+    heightAuto: false,
+    customClass: busyPopupClass,
+    didOpen: enableBusyModalInteraction
   })
 
   try {

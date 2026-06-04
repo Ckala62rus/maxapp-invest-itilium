@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import Swal from 'sweetalert2'
+import { confirmAction } from '@/helpers/confirmDialog'
 import { withBusyModal } from '@/helpers/busyModal'
 import { validateStatusTransition } from '@/helpers/ticketWorkflow'
 
@@ -537,21 +537,11 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       return
     }
 
-    const confirm = await Swal.fire({
+    const confirm = await confirmAction({
       title: 'Смена ответственного',
       text: 'Назначить выбранного сотрудника ответственным по этой заявке?',
-      icon: 'question',
-      showCancelButton: true,
       confirmButtonText: 'Да, назначить',
-      cancelButtonText: 'Отмена',
-      reverseButtons: true,
-      focusCancel: true,
-      customClass: {
-        popup: 'maxapp-swal-popup',
-        confirmButton: 'maxapp-swal-confirm',
-        cancelButton: 'maxapp-swal-cancel'
-      },
-      buttonsStyling: true
+      cancelButtonText: 'Отмена'
     })
     if (!confirm.isConfirmed) {
       return

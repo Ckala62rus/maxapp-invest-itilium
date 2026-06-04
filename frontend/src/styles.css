@@ -837,8 +837,13 @@ textarea {
 }
 
 /* SweetAlert2 theme: приводим confirm-окна к тёмному стилю mini app. */
-.swal2-container:not(.swal2-shown) {
+body:not(.swal2-shown) .swal2-container {
   pointer-events: none !important;
+}
+
+body.swal2-shown .swal2-container,
+.swal2-container.swal2-shown {
+  pointer-events: auto !important;
 }
 
 .swal2-container {
@@ -901,6 +906,9 @@ textarea {
   font: inherit;
   font-weight: 700;
   box-shadow: none;
+  touch-action: manipulation;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .swal2-popup.maxapp-swal-popup .swal2-confirm.maxapp-swal-confirm {
