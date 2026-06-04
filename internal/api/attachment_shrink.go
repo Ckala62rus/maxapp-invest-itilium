@@ -49,7 +49,8 @@ func shrinkImageAttachmentForItilium(fa models.FileAttachment) models.FileAttach
 	if !isImageAttachment(fa) {
 		return fa
 	}
-	if len(fa.Data) <= itiliumAttachmentMaxBytes {
+	// С камеры часто 3–10 MiB; пережимаем всё, что больше порога, даже если уже < 1 MiB.
+	if len(fa.Data) <= 200*1024 {
 		return fa
 	}
 

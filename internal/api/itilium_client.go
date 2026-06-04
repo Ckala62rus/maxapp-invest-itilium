@@ -1967,7 +1967,18 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, path string, request m
 		return models.TicketDetail{}, fmt.Errorf("write description: %w", err)
 	}
 
-	for _, fa := range prepareItiliumFileAttachments(request.FileAttachments) {
+	preparedFiles := prepareItiliumFileAttachments(request.FileAttachments)
+	for _, fa := range preparedFiles {
+		if len(fa.Data) > itiliumAttachmentMaxBytes {
+			return models.TicketDetail{}, fmt.Errorf(
+				"вложение %q слишком большое для ITILIUM (%d КБ); уменьшите фото или отправьте без файла",
+				fa.Filename,
+				(len(fa.Data)+1023)/1024,
+			)
+		}
+	}
+
+	for _, fa := range preparedFiles {
 		part, err := mp.CreateFormFile("files", fa.Filename)
 		if err != nil {
 			return models.TicketDetail{}, fmt.Errorf("create form file: %w", err)
@@ -2001,8 +2012,8 @@ func (c *Client) doCreateSCMultipart(ctx context.Context, path string, request m
 
 	// В INFO пишем то, что уходит в 1С (тело multipart с бинарниками в лог не дублируем — только поля и метаданные файлов).
 	longDesc := buildCreateSCLongDescription(request)
-	fileMeta := make([]string, 0, len(request.FileAttachments))
-	for _, fa := range request.FileAttachments {
+	fileMeta := make([]string, 0, len(preparedFiles))
+	for _, fa := range preparedFiles {
 		fileMeta = append(fileMeta, fmt.Sprintf("%s:%dB", fa.Filename, len(fa.Data)))
 	}
 	// Имена ключей ниже — только для slog (не уходят в 1С). В HTTP в 1С поля называются id, shortDescription, description, files.

@@ -27,11 +27,13 @@ function normalizeTicketError(error) {
 
   if (
     statusCode === 413 ||
+    /status\s+413/i.test(rawMessage) ||
     /status code 413/i.test(rawMessage) ||
+    /itilium request failed with status 413/i.test(rawMessage) ||
     /слишком большое для сервера ITILIUM/i.test(rawMessage) ||
     /Request Entity Too Large/i.test(rawMessage)
   ) {
-    return 'Вложение слишком большое для сервера ITILIUM. Фото сжимается автоматически — обновите приложение и повторите; или отправьте без файла.'
+    return 'Фото слишком большое для сервера 1С. Закройте мини-приложение, откройте снова (нужна свежая версия), прикрепите фото ещё раз — оно сожмётся. Или отправьте без вложения.'
   }
   if (statusCode === 404 || /status 404/i.test(rawMessage)) {
     return 'Заявка не найдена в ITILIUM.'
@@ -39,6 +41,9 @@ function normalizeTicketError(error) {
   if (statusCode === 400) {
     if (/ticket number is required/i.test(rawMessage)) {
       return 'Проверьте номер заявки и повторите запрос.'
+    }
+    if (/status\s+413/i.test(rawMessage) || /itilium request failed with status 413/i.test(rawMessage)) {
+      return 'Фото слишком большое для сервера 1С. Закройте мини-приложение, откройте снова, прикрепите фото ещё раз — оно сожмётся. Или отправьте без вложения.'
     }
     if (backendMessage && String(backendMessage).trim()) {
       return String(backendMessage).trim()
