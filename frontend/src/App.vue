@@ -127,6 +127,7 @@ const {
   setMarketingFieldValue,
   setCreateExecutionDate,
   addCreateAttachments,
+  createAttachmentsPreparing,
   removeCreateAttachment,
   submitComment,
   addCommentAttachments,
@@ -276,6 +277,7 @@ function openResponsibleTicketDetails(ticketNumber) {
           :selected-marketing-service="selectedMarketingService"
           :current-marketing-schema="currentMarketingSchema"
           :is-creating-ticket="isCreatingTicket"
+          :create-attachments-preparing="createAttachmentsPreparing"
           :available-request-types="availableRequestTypes"
           @submit-create-ticket="submitCreateTicket"
           @set-marketing-service="setMarketingService"

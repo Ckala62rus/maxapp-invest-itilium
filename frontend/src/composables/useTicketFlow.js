@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { confirmAction } from '@/helpers/confirmDialog'
 import { withBusyModal } from '@/helpers/busyModal'
 import { validateStatusTransition } from '@/helpers/ticketWorkflow'
+import { prepareAttachmentFiles } from '@/utils/prepareAttachmentFiles'
 
 import {
   actionTypes as ticketActionTypes,
@@ -27,6 +28,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   // Текст комментария в карточке; вложения — отдельным списком File (multipart на бэкенд).
   const commentDraft = ref('')
   const commentAttachmentFiles = ref([])
+  /** Пока сжимаем фото с камеры перед показом в списке вложений. */
+  const createAttachmentsPreparing = ref(false)
   /** Увеличивается после успешной отправки комментария — экран карточки закрывает панель и показывает короткое уведомление. */
   const commentSuccessTick = ref(0)
   /** После успешной отправки оценки — закрыть панель оценки в карточке. */
@@ -458,10 +461,22 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     createTicketForm.value.executionDate = value || ''
   }
 
-  // Добавляем выбранные в браузере файлы в список перед отправкой (не только имена).
-  function addCreateAttachments(files) {
+  // Сразу сжимаем фото: с камеры в MAX часто уходит несколько МБ, хотя в галерее видно «400 КБ».
+  async function addCreateAttachments(files) {
     const nextFiles = Array.from(files || []).filter((f) => f instanceof File)
-    createTicketForm.value.attachmentFiles = [...(createTicketForm.value.attachmentFiles || []), ...nextFiles]
+    if (!nextFiles.length) {
+      return
+    }
+    createAttachmentsPreparing.value = true
+    try {
+      const prepared = await prepareAttachmentFiles(nextFiles)
+      createTicketForm.value.attachmentFiles = [
+        ...(createTicketForm.value.attachmentFiles || []),
+        ...prepared
+      ]
+    } finally {
+      createAttachmentsPreparing.value = false
+    }
   }
 
   function removeCreateAttachment(index) {
@@ -665,6 +680,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     setMarketingFieldValue,
     setCreateExecutionDate,
     addCreateAttachments,
+    createAttachmentsPreparing,
     removeCreateAttachment,
     submitComment,
     addCommentAttachments,

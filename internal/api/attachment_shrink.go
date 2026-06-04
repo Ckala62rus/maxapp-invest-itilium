@@ -14,9 +14,13 @@ import (
 )
 
 // Лимит тела на nginx перед 1С на itilium_test — по факту ~1 MiB (413 на ~8 MiB JPG).
-const itiliumAttachmentMaxBytes = 900 * 1024
+const itiliumAttachmentMaxBytes = 512 * 1024
 
-const itiliumAttachmentMaxEdge = 2048
+const itiliumAttachmentMaxEdge = 1280
+
+var imageFileExt = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
+}
 
 var jpegQualities = []int{85, 70, 55, 40, 30}
 
@@ -32,13 +36,20 @@ func prepareItiliumFileAttachments(files []models.FileAttachment) []models.FileA
 	return out
 }
 
+func isImageAttachment(fa models.FileAttachment) bool {
+	ctype := strings.ToLower(strings.TrimSpace(fa.ContentType))
+	if strings.HasPrefix(ctype, "image/") {
+		return true
+	}
+	return imageFileExt[strings.ToLower(filepath.Ext(fa.Filename))]
+}
+
 // shrinkImageAttachmentForItilium перекодирует большие изображения в JPEG под лимит nginx 1С.
 func shrinkImageAttachmentForItilium(fa models.FileAttachment) models.FileAttachment {
-	if len(fa.Data) <= itiliumAttachmentMaxBytes {
+	if !isImageAttachment(fa) {
 		return fa
 	}
-	ctype := strings.ToLower(strings.TrimSpace(fa.ContentType))
-	if ctype != "" && !strings.HasPrefix(ctype, "image/") {
+	if len(fa.Data) <= itiliumAttachmentMaxBytes {
 		return fa
 	}
 

@@ -1,4 +1,6 @@
 <script setup>
+import { formatFileSize } from '@/utils/prepareAttachmentFiles'
+
 // Создание заявки: тип (ИТ / маркетинг / DAX по флагам профиля), текст, срок.
 defineProps({
   createTicketForm: {
@@ -66,6 +68,10 @@ defineProps({
   isCreatingTicket: {
     type: Boolean,
     required: true
+  },
+  createAttachmentsPreparing: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -261,10 +267,13 @@ function setMarketingField(key, value) {
             type="file"
             multiple
             accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+            capture="environment"
             @change="addAttachments"
           />
         </label>
       </div>
+
+      <p v-if="createAttachmentsPreparing" class="muted-text">Подготовка фото…</p>
 
       <div class="chip-list">
         <div
@@ -272,7 +281,7 @@ function setMarketingField(key, value) {
           :key="file.name + '-' + index"
           class="file-chip"
         >
-          <span>{{ file.name }}</span>
+          <span>{{ file.name }} ({{ formatFileSize(file.size) }})</span>
           <button class="file-chip-remove" type="button" @click="removeAttachment(index)">Удалить</button>
         </div>
       </div>
@@ -281,7 +290,7 @@ function setMarketingField(key, value) {
         <button
           class="primary-button"
           type="submit"
-          :disabled="isCreatingTicket || isCreatingMarketingRequest"
+          :disabled="isCreatingTicket || isCreatingMarketingRequest || createAttachmentsPreparing"
         >
           {{ (isCreatingTicket || isCreatingMarketingRequest) ? 'Отправка...' : 'Отправить заявку' }}
         </button>
