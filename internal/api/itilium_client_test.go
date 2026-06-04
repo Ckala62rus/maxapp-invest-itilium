@@ -115,6 +115,35 @@ func TestSplitMarketingCreateFormSeparatesDateFields(t *testing.T) {
 	}
 }
 
+func TestResponsibleOptionByID(t *testing.T) {
+	t.Parallel()
+
+	option, ok := responsibleOptionByID([]models.ResponsibleOption{
+		{ExternalID: "0000000005", Person: "Варикаш Андрей", Team: "[Барс] Сервисные инженеры"},
+	}, "0000000005")
+
+	if !ok {
+		t.Fatal("responsibleOptionByID() = false, want true")
+	}
+	if option.Person != "Варикаш Андрей" {
+		t.Fatalf("option.Person = %q, want Варикаш Андрей", option.Person)
+	}
+}
+
+func TestParseFindSCResponseMapsResponsibleEmployeeID(t *testing.T) {
+	t.Parallel()
+
+	detail := parseFindSCResponse(map[string]any{
+		"number":                  "0000024294",
+		"responsibleEmployeeId":   "0000000099",
+		"responsibleEmployeeTitle": "Тюгаева Дарья Викторовна",
+	}, "0000024294")
+
+	if detail.ResponsibleEmployeeID != "0000000099" {
+		t.Fatalf("ResponsibleEmployeeID = %q, want 0000000099", detail.ResponsibleEmployeeID)
+	}
+}
+
 func TestMarketingDateFieldVariantsIncludeDocumentedExecutionDate(t *testing.T) {
 	t.Parallel()
 

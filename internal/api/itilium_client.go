@@ -1945,7 +1945,60 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 			Number: number,
 		}, nil
 	}
+
+	requestedID := strings.TrimSpace(request.ResponsibleID)
+	if requestedID == "" {
+		return detail, nil
+	}
+	if strings.TrimSpace(detail.ResponsibleEmployeeID) == requestedID {
+		return detail, nil
+	}
+
+	// 1С часто отвечает 204 на change_responsible_sc, но мгновенный find_sc ещё с прежним исполнителем.
+	options, optionsErr := c.ListResponsibleOptions(ctx, request.UserID, number)
+	if optionsErr != nil {
+		c.logger.Warn(
+			"find_sc returned stale responsible after change_responsible_sc, responsibles lookup failed",
+			"number", number,
+			"requested_responsible_id", requestedID,
+			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
+			"error", optionsErr,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return detail, nil
+	}
+	if option, ok := responsibleOptionByID(options, requestedID); ok {
+		c.logger.Warn(
+			"find_sc returned stale responsible after change_responsible_sc, applying selected assignee overlay",
+			"number", number,
+			"requested_responsible_id", requestedID,
+			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		detail.ResponsibleEmployeeID = requestedID
+		if option.Person != "" {
+			detail.ResponsibleEmployee = option.Person
+		}
+		if option.Team != "" {
+			detail.ResponsibleTeam = option.Team
+		}
+	}
 	return detail, nil
+}
+
+func responsibleOptionByID(options []models.ResponsibleOption, responsibleID string) (models.ResponsibleOption, bool) {
+	trimmedID := strings.TrimSpace(responsibleID)
+	if trimmedID == "" {
+		return models.ResponsibleOption{}, false
+	}
+	for _, option := range options {
+		if strings.TrimSpace(option.ExternalID) == trimmedID {
+			return option, true
+		}
+	}
+	return models.ResponsibleOption{}, false
 }
 
 // ConfirmTicket sends user rating via legacy confirm_sc (POST, query: id, telegram, incident, mark, optional comment_text).
@@ -1994,8 +2047,9 @@ func parseFindSCResponse(payload map[string]any, fallbackNumber string) models.T
 		CreationDate:         pickStringFromMap(source, "creationDate", "CreationDate", "dateCreate", "ДатаСоздания"),
 		State:                pickStringFromMap(source, "state", "State", "status", "Status", "Состояние"),
 		Deadline:             pickStringFromMap(source, "deadline", "Deadline", "deadlineDate", "executionDate", "ДатаИсполнения"),
-		ResponsibleEmployee:  pickStringFromMap(source, "responsibleEmployee", "responsibleEmployeeTitle", "ResponsibleEmployeeTitle"),
-		ResponsibleTeam:      pickStringFromMap(source, "responsibleTeam", "responsibleTeamTitle", "ResponsibleTeam", "client", "OU", "Подразделение"),
+		ResponsibleEmployee:   pickStringFromMap(source, "responsibleEmployee", "responsibleEmployeeTitle", "ResponsibleEmployeeTitle"),
+		ResponsibleEmployeeID: pickStringFromMap(source, "responsibleEmployeeId", "ResponsibleEmployeeId", "responsibleId", "ResponsibleId"),
+		ResponsibleTeam:       pickStringFromMap(source, "responsibleTeam", "responsibleTeamTitle", "ResponsibleTeam", "client", "OU", "Подразделение"),
 		CanChangeStatus:      boolFromAny(firstAny(source, "canChangeStatus", "change_status")),
 		CanChangeResponsible: boolFromAny(firstAny(source, "canChangeResponsible", "change_responsible")),
 		CanConfirmRating:     boolFromAny(firstAny(source, "canConfirmRating", "needRating", "confirm_rating", "need_confirm")),

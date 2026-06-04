@@ -155,6 +155,8 @@ type TicketDetail struct {
 	Deadline string `json:"deadline"`
 	// ResponsibleEmployee stores the current responsible employee display name.
 	ResponsibleEmployee string `json:"responsibleEmployee,omitempty"`
+	// ResponsibleEmployeeID stores the ITILIUM responsible employee identifier from find_sc.
+	ResponsibleEmployeeID string `json:"responsibleEmployeeId,omitempty"`
 	// ResponsibleTeam stores the team currently assigned to the ticket.
 	ResponsibleTeam string `json:"responsibleTeam"`
 	// CanChangeStatus shows whether status transition is allowed.
