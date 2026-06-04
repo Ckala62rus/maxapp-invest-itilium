@@ -173,7 +173,7 @@ func (s *TicketService) ChangeStatus(ctx context.Context, number string, request
 	if strings.Contains(strings.ToLower(strings.TrimSpace(request.State)), "в ожидании ответа") && strings.TrimSpace(request.Comment) == "" {
 		return models.TicketDetail{}, errors.New("comment is required for state 'В ожидании ответа'")
 	}
-	// Отложено: в 1С уходят comment и date_inc — оба поля обязательны.
+	// Отложено: в 1С уходят comment_text и date_inc — оба поля обязательны.
 	if strings.Contains(strings.ToLower(strings.TrimSpace(request.State)), "отлож") {
 		if strings.TrimSpace(request.Comment) == "" {
 			return models.TicketDetail{}, errors.New("comment is required for postponed state")

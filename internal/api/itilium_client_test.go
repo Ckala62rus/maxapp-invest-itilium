@@ -155,3 +155,53 @@ func TestMarketingDateFieldVariantsIncludeDocumentedExecutionDate(t *testing.T) 
 		t.Fatalf("first variant ExecutionDate = %q, want 2026-07-01", variants[0].Get("ExecutionDate"))
 	}
 }
+
+func TestParseItiliumMutationResponseTreatsJSONStringAsError(t *testing.T) {
+	t.Parallel()
+
+	err := parseItiliumMutationResponse([]byte(`"Не заполнены обязательные параметры"`))
+	if err == nil {
+		t.Fatal("parseItiliumMutationResponse() error = nil, want business error")
+	}
+	if !strings.Contains(err.Error(), "обязательные параметры") {
+		t.Fatalf("parseItiliumMutationResponse() error = %q", err.Error())
+	}
+}
+
+func TestParseItiliumMutationResponseAllowsEmptySuccessBody(t *testing.T) {
+	t.Parallel()
+
+	if err := parseItiliumMutationResponse(nil); err != nil {
+		t.Fatalf("parseItiliumMutationResponse() error = %v, want nil", err)
+	}
+}
+
+func TestBuildChangeStateFormPostponeUsesCalendarDateInc(t *testing.T) {
+	t.Parallel()
+
+	form := buildChangeStateForm("0000023887", models.ChangeStatusRequest{
+		UserID:  "40367639",
+		State:   "05_Отложено",
+		Comment: "апрпарпар",
+		Date:    "2026-06-30",
+	})
+
+	if form.Get("date_inc") != "30.06.2026" {
+		t.Fatalf("date_inc = %q, want 30.06.2026", form.Get("date_inc"))
+	}
+	if form.Get("comment_text") != "апрпарпар" {
+		t.Fatalf("comment_text = %q, want апрпарпар", form.Get("comment_text"))
+	}
+	if form.Get("comment") != "" {
+		t.Fatalf("comment = %q, want empty (use comment_text only)", form.Get("comment"))
+	}
+}
+
+func TestFormatItiliumCalendarDateConvertsISOInput(t *testing.T) {
+	t.Parallel()
+
+	got := formatItiliumCalendarDate("2026-06-30")
+	if got != "30.06.2026" {
+		t.Fatalf("formatItiliumCalendarDate() = %q, want 30.06.2026", got)
+	}
+}

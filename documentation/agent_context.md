@@ -53,6 +53,7 @@
 - Added Russian per-route descriptions in `documentation/itilium-raw.postman_collection.json` (`item.description`) so endpoint purpose is visible directly in Postman UI.
 - Added Russian `description` for request parameters in `documentation/itilium-raw.postman_collection.json` (query/urlencoded/form-data keys) so Postman shows a clear hint for each field.
 - Follow-up live logs on 2026-06-01 showed POST-with-query accepts `Services`/`Subdivision` but still rejects the execution date when date aliases are only in query. For no-file marketing requests backend now sends service/subdivision/form fields in query and execution-date aliases in urlencoded POST body, then retries compact date-body variants before falling back to query-only.
+- Live logs on 2026-06-04 showed `POST /change_state_sc` returning HTTP `200` with body `"Не заполнены обязательные параметры"` while the UI still showed the new status: backend treated empty-error handling as success and forced `detail.State` when `find_sc` stayed stale. Fix: parse JSON-string errors from multipart mutations; for «Отложено» 1С confirmed fields `comment_text` + `date_inc` (`DD.MM.YYYY`); overlay state only after successful `change_state_sc`.
 
 ## Important Decisions
 

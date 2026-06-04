@@ -1345,6 +1345,63 @@ func minimalMarketingDateBodyVariants(rawDate string) []url.Values {
 	}
 }
 
+// decodeItiliumResponseMessage извлекает текстовое сообщение из JSON-строки 1С (HTTP 200).
+func decodeItiliumResponseMessage(payload []byte) string {
+	return decodeMarketingResponseMessage(payload)
+}
+
+// parseItiliumMutationResponse трактует тело multipart-мутации: пустое — успех, JSON-строка — ошибка 1С.
+func parseItiliumMutationResponse(payload []byte) error {
+	message := decodeItiliumResponseMessage(payload)
+	if message == "" {
+		return nil
+	}
+	return errors.New(message)
+}
+
+// formatItiliumCalendarDate приводит дату к формату DD.MM.YYYY, как в полях creationDate/deadlineDate 1С.
+func formatItiliumCalendarDate(value string) string {
+	isoDate := formatMarketingExecutionDate(value)
+	if isoDate == "" {
+		return ""
+	}
+	parsed, err := time.Parse("2006-01-02", isoDate)
+	if err != nil {
+		return ""
+	}
+	return parsed.Format("02.01.2006")
+}
+
+// buildChangeStateForm собирает поля для POST /change_state_sc по контракту 1С.
+func buildChangeStateForm(number string, request models.ChangeStatusRequest) url.Values {
+	form := url.Values{}
+	userID := strings.TrimSpace(request.UserID)
+	trimmedNumber := strings.TrimSpace(number)
+	// Совместимость с legacy-обработчиком: передаём оба идентификатора пользователя.
+	form.Set("id", userID)
+	form.Set("telegram", userID)
+	form.Set("inc_number", trimmedNumber)
+	form.Set("new_state", strings.TrimSpace(request.State))
+	// Для «Отложено» и других переходов с комментарием 1С ждёт comment_text (не comment).
+	if comment := strings.TrimSpace(request.Comment); comment != "" {
+		form.Set("comment_text", comment)
+	}
+	if rawDate := strings.TrimSpace(request.Date); rawDate != "" {
+		if date := formatChangeStateDateInc(rawDate); date != "" {
+			form.Set("date_inc", date)
+		}
+	}
+	return form
+}
+
+// formatChangeStateDateInc нормализует date_inc для change_state_sc (формат DD.MM.YYYY в 1С).
+func formatChangeStateDateInc(rawDate string) string {
+	if calendarDate := formatItiliumCalendarDate(rawDate); calendarDate != "" {
+		return calendarDate
+	}
+	return formatMarketingExecutionDate(rawDate)
+}
+
 // formatMarketingExecutionDate нормализует дату для create_sc_Marketing в формат YYYY-MM-DD.
 func formatMarketingExecutionDate(value string) string {
 	trimmed := strings.TrimSpace(value)
@@ -2011,35 +2068,28 @@ func (c *Client) doAddCommentMultipart(ctx context.Context, scNumber string, com
 
 // ChangeStatus changes the workflow status of a ticket.
 func (c *Client) ChangeStatus(ctx context.Context, number string, request models.ChangeStatusRequest) (models.TicketDetail, error) {
-	form := url.Values{}
-	// Совместимость с legacy-обработчиком: передаём оба идентификатора пользователя.
-	form.Set("id", strings.TrimSpace(request.UserID))
-	form.Set("telegram", strings.TrimSpace(request.UserID))
-	form.Set("inc_number", strings.TrimSpace(number))
-	form.Set("new_state", strings.TrimSpace(request.State))
-	if text := strings.TrimSpace(request.Date); text != "" {
-		form.Set("date_inc", text)
-	}
-	if text := strings.TrimSpace(request.Comment); text != "" {
-		form.Set("comment", text)
-	}
+	form := buildChangeStateForm(number, request)
 
-	if _, err := c.doMultipartFormPostBytes(ctx, "/change_state_sc", form); err != nil {
+	payload, err := c.doMultipartFormPostBytes(ctx, "/change_state_sc", form)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	// 1С может вернуть HTTP 200 с JSON-строкой ошибки вместо пустого тела.
+	if err := parseItiliumMutationResponse(payload); err != nil {
 		return models.TicketDetail{}, err
 	}
 
 	// После смены статуса возвращаем обновлённую карточку из find_sc.
 	detail, err := c.GetTicket(ctx, request.UserID, number)
 	if err != nil {
-		// Если обновлённая карточка недоступна, хотя бы возвращаем локально обновлённый статус.
 		return models.TicketDetail{
 			Number: number,
 			State:  request.State,
 		}, nil
 	}
-	if requestedState := strings.TrimSpace(request.State); requestedState != "" && strings.TrimSpace(detail.State) != requestedState {
-		// 1С иногда подтверждает change_state_sc, но мгновенный find_sc ещё отдаёт старую карточку.
-		// Для UI возвращаем подтверждённый целевой статус, а следующий refresh подтянет окончательную карточку.
+	requestedState := strings.TrimSpace(request.State)
+	if requestedState != "" && strings.TrimSpace(detail.State) != requestedState {
+		// Успешный change_state_sc, но find_sc ещё отдаёт старую карточку — подменяем только после подтверждённого вызова 1С.
 		c.logger.Warn(
 			"find_sc returned stale state after change_state_sc",
 			"number", number,
@@ -2062,7 +2112,11 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 	form.Set("inc_number", strings.TrimSpace(number))
 	form.Set("responsibleEmployeeId", strings.TrimSpace(request.ResponsibleID))
 
-	if _, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form); err != nil {
+	payload, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	if err := parseItiliumMutationResponse(payload); err != nil {
 		return models.TicketDetail{}, err
 	}
 

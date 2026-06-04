@@ -260,7 +260,7 @@
       "item": [
         {
           "name": "change_state_sc (POST multipart)",
-          "description": "Смена статуса заявки. Можно передать comment и date_inc при необходимости.",
+          "description": "Смена статуса заявки. Для «Отложено» обязательны comment_text и date_inc (DD.MM.YYYY).",
           "request": {
             "method": "POST",
             "body": {
@@ -291,21 +291,21 @@
                   "description": "Целевой статус, в который нужно перевести заявку."
                 },
                 {
-                  "key": "comment",
+                  "key": "comment_text",
                   "value": "Смена статуса из Postman",
                   "type": "text",
-                  "description": "Комментарий к смене статуса или оценке."
+                  "description": "Комментарий к смене статуса (обязателен для «Отложено» и «В ожидании ответа»)."
                 },
                 {
                   "key": "date_inc",
-                  "value": "2026-07-01",
+                  "value": "01.07.2026",
                   "type": "text",
-                  "description": "Legacy-поле даты при смене статуса/маркетинге."
+                  "description": "Дата отложения (DD.MM.YYYY), обязательна для статуса «Отложено»."
                 }
               ]
             },
             "url": "{{itiliumBaseUrl}}/change_state_sc",
-            "description": "Смена статуса заявки. Можно передать comment и date_inc при необходимости."
+            "description": "Смена статуса заявки. Для «Отложено» обязательны comment_text и date_inc (DD.MM.YYYY)."
           }
         },
         {

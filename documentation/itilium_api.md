@@ -426,7 +426,7 @@
 - получить список заявок в ответственности: `POST /list_sc_responsible` (`id`, `multipart/form-data`)
 - найти карточку заявки: `GET /find_sc` (`id`, `sc_number`)
 - добавить комментарий: `POST /add_comment` (`id`, `source`, `source_type=servicecall`, `comment_text`, `multipart/form-data`; при файлах — ещё части `files`)
-- сменить статус: `POST /change_state_sc` (`id`, `telegram`, `inc_number`, `new_state`, optional `date_inc`, `comment`, `multipart/form-data`)
+- сменить статус: `POST /change_state_sc` (`id`, `telegram`, `inc_number`, `new_state`, optional `date_inc`, `comment_text`, `multipart/form-data`)
 - получить доступных ответственных: **`POST /responsibles_sc?id=…&sc_number=…`** (параметры в query, тело пустое; на части контуров `GET` даёт 405) **или** fallback `POST` с `telegram`+`sc_number` в query, **или** `multipart/form-data` только с `id` и `sc_number` (без `telegram`, иначе возможна ошибка 1С); ответ — массив **команд** с `responsibles` или плоский список
 - сменить ответственного: `POST /change_responsible_sc` (`id`, `telegram`, `inc_number`, `responsibleEmployeeId`, `multipart/form-data`)
 - оценить решение: `POST /confirm_sc` (query: `telegram`, `incident`, `mark`, опционально `comment_text`; тело пустое) — проксируется как `POST /api/v1/tickets/{number}/confirm`
@@ -521,7 +521,9 @@
 
 ### `POST /change_state_sc`, `POST /change_responsible_sc`
 
-- Успех **`200`**: часто пустое или короткое тело; затем обновление карточки через `find_sc`.
+- Успех **`200`**: часто **пустое** тело; затем обновление карточки через `find_sc`.
+- Ошибка бизнес-логики тоже может прийти как **`200`** с JSON-строкой в теле, например `"Не заполнены обязательные параметры"` — backend должен трактовать это как ошибку, а не как успех.
+- Для перехода в **«Отложено»** передают **`comment_text`** и **`date_inc`** (`DD.MM.YYYY`, например `30.06.2026`).
 
 ### `POST /responsibles_sc` (параметры в строке запроса)
 
