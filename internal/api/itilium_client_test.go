@@ -232,6 +232,30 @@ func TestBuildChangeResponsibleFormUsesIncNumberAndEmployeeId(t *testing.T) {
 	}
 }
 
+func TestChangeResponsibleAttemptsPreferEmployeeOnly(t *testing.T) {
+	t.Parallel()
+
+	attempts := changeResponsibleAttempts("0000023887", models.ChangeResponsibleRequest{
+		UserID:        "40367639",
+		ResponsibleID: "0000000099",
+		TeamID:        "0000000003",
+	})
+	if len(attempts) < 2 {
+		t.Fatalf("attempts count = %d, want at least 2", len(attempts))
+	}
+	first := attempts[0]
+	if first.query.Get("responsibleEmployeeId") != "0000000099" {
+		t.Fatalf("first query employee = %q", first.query.Get("responsibleEmployeeId"))
+	}
+	if first.query.Get("responsibleTeamId") != "" {
+		t.Fatalf("first attempt must not send team, got %q", first.query.Get("responsibleTeamId"))
+	}
+	second := attempts[1]
+	if second.query.Get("responsibleTeamId") != "0000000003" {
+		t.Fatalf("second query team = %q, want 0000000003", second.query.Get("responsibleTeamId"))
+	}
+}
+
 func TestBuildChangeResponsibleFormIncludesTeamIdWhenSet(t *testing.T) {
 	t.Parallel()
 

@@ -2317,9 +2317,18 @@ func (c *Client) ChangeStatus(ctx context.Context, number string, request models
 	return detail, nil
 }
 
-// buildChangeResponsibleForm собирает поля POST /change_responsible_sc по контракту 1С.
-// Обязательные: id, inc_number; цель смены — responsibleEmployeeId (сотрудник) и/или responsibleTeamId (рабочая группа).
+// buildChangeResponsibleForm собирает поля POST /change_responsible_sc (multipart).
+// Обязательные: id, inc_number; цель — responsibleEmployeeId и/или responsibleTeamId (1С: «или», не обязательно оба сразу).
 func buildChangeResponsibleForm(number string, request models.ChangeResponsibleRequest) url.Values {
+	return buildChangeResponsibleFields(number, request, true)
+}
+
+// buildChangeResponsibleQuery собирает те же поля для POST с параметрами в query (пустое тело).
+func buildChangeResponsibleQuery(number string, request models.ChangeResponsibleRequest) url.Values {
+	return buildChangeResponsibleFields(number, request, false)
+}
+
+func buildChangeResponsibleFields(number string, request models.ChangeResponsibleRequest, includeLegacy bool) url.Values {
 	form := url.Values{}
 	userID := strings.TrimSpace(request.UserID)
 	trimmedNumber := strings.TrimSpace(number)
@@ -2331,10 +2340,40 @@ func buildChangeResponsibleForm(number string, request models.ChangeResponsibleR
 	if teamID := strings.TrimSpace(request.TeamID); teamID != "" {
 		form.Set("responsibleTeamId", teamID)
 	}
-	// Совместимость со старыми обработчиками 1С (не в каноническом контракте, но оставлены на тестовом контуре).
-	form.Set("telegram", userID)
-	form.Set("sc_number", trimmedNumber)
+	if includeLegacy {
+		form.Set("telegram", userID)
+		form.Set("sc_number", trimmedNumber)
+	}
 	return form
+}
+
+// changeResponsibleAttempt — один способ вызова change_responsible_sc (multipart или query).
+type changeResponsibleAttempt struct {
+	label   string
+	query   url.Values
+	multipart url.Values
+}
+
+func changeResponsibleAttempts(number string, request models.ChangeResponsibleRequest) []changeResponsibleAttempt {
+	employeeOnly := models.ChangeResponsibleRequest{
+		UserID:        request.UserID,
+		ResponsibleID: request.ResponsibleID,
+	}
+	attempts := []changeResponsibleAttempt{
+		{
+			label:     "employee_query",
+			query:     buildChangeResponsibleQuery(number, employeeOnly),
+			multipart: buildChangeResponsibleForm(number, employeeOnly),
+		},
+	}
+	if teamID := strings.TrimSpace(request.TeamID); teamID != "" {
+		attempts = append(attempts, changeResponsibleAttempt{
+			label:     "employee_team_query",
+			query:     buildChangeResponsibleQuery(number, request),
+			multipart: buildChangeResponsibleForm(number, request),
+		})
+	}
+	return attempts
 }
 
 // responsibleChangePollDelays — паузы перед повторным find_sc: 1С часто отдаёт старого исполнителя сразу после 204.
@@ -2345,6 +2384,8 @@ var responsibleChangePollDelays = []time.Duration{
 	1500 * time.Millisecond,
 	3 * time.Second,
 	5 * time.Second,
+	8 * time.Second,
+	12 * time.Second,
 }
 
 func sleepContext(ctx context.Context, delay time.Duration) error {
@@ -2410,41 +2451,109 @@ func (c *Client) resolveResponsibleTeamID(
 
 // ChangeResponsible changes the responsible person of a ticket.
 func (c *Client) ChangeResponsible(ctx context.Context, number string, request models.ChangeResponsibleRequest) (models.TicketDetail, error) {
-	request = c.resolveResponsibleTeamID(ctx, request.UserID, number, request)
-	form := buildChangeResponsibleForm(number, request)
-
-	payload, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form)
-	if err != nil {
-		return models.TicketDetail{}, err
-	}
-	if err := parseItiliumMutationResponse(payload); err != nil {
-		return models.TicketDetail{}, err
-	}
-
 	requestedID := strings.TrimSpace(request.ResponsibleID)
-	detail, err := c.pollTicketResponsibleAfterChange(ctx, request.UserID, number, requestedID)
-	if err != nil {
-		return models.TicketDetail{}, fmt.Errorf("poll ticket after change_responsible_sc: %w", err)
+	if requestedID == "" {
+		return models.TicketDetail{}, errors.New("responsible id is required")
 	}
-	if requestedID != "" && strings.TrimSpace(detail.ResponsibleEmployeeID) != requestedID {
-		c.logger.Warn(
-			"find_sc returned stale responsible after change_responsible_sc",
-			"number", number,
-			"requested_responsible_id", requestedID,
-			"requested_team_id", request.TeamID,
-			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
-			"find_sc_responsible_title", detail.ResponsibleEmployee,
-			"request_id", middleware.RequestIDFromContext(ctx),
-			"user_id", middleware.UserIDFromContext(ctx),
-		)
-		return models.TicketDetail{}, &ResponsibleChangeNotConfirmedError{
-			Number:                 number,
-			RequestedResponsibleID: requestedID,
-			ActualResponsibleID:    detail.ResponsibleEmployeeID,
-			ActualResponsibleTitle: detail.ResponsibleEmployee,
+	if strings.TrimSpace(request.TeamID) == "" {
+		request = c.resolveResponsibleTeamID(ctx, request.UserID, number, request)
+	}
+
+	var lastDetail models.TicketDetail
+	var lastMutationErr error
+
+	for idx, attempt := range changeResponsibleAttempts(number, request) {
+		// Сначала query (как responsibles_sc), затем multipart — на части публикаций body не читается.
+		for _, useQuery := range []bool{true, false} {
+			var (
+				payload []byte
+				err     error
+			)
+			if useQuery {
+				if len(attempt.query) == 0 {
+					continue
+				}
+				payload, err = c.doPostEmptyQuery(ctx, "/change_responsible_sc", attempt.query)
+			} else {
+				payload, err = c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", attempt.multipart)
+			}
+			if err != nil {
+				c.logger.Warn(
+					"change_responsible_sc transport failed",
+					"variant", attempt.label,
+					"query_mode", useQuery,
+					"variant_index", idx,
+					"error", err,
+					"request_id", middleware.RequestIDFromContext(ctx),
+					"user_id", middleware.UserIDFromContext(ctx),
+				)
+				continue
+			}
+			if err := parseItiliumMutationResponse(payload); err != nil {
+				lastMutationErr = err
+				c.logger.Warn(
+					"change_responsible_sc business error",
+					"variant", attempt.label,
+					"query_mode", useQuery,
+					"error", err,
+					"request_id", middleware.RequestIDFromContext(ctx),
+					"user_id", middleware.UserIDFromContext(ctx),
+				)
+				continue
+			}
+
+			detail, err := c.pollTicketResponsibleAfterChange(ctx, request.UserID, number, requestedID)
+			if err != nil {
+				c.logger.Warn(
+					"change_responsible_sc poll failed",
+					"variant", attempt.label,
+					"query_mode", useQuery,
+					"error", err,
+					"request_id", middleware.RequestIDFromContext(ctx),
+					"user_id", middleware.UserIDFromContext(ctx),
+				)
+				continue
+			}
+			lastDetail = detail
+			if strings.TrimSpace(detail.ResponsibleEmployeeID) == requestedID {
+				c.logger.Info(
+					"change_responsible_sc confirmed by find_sc",
+					"variant", attempt.label,
+					"query_mode", useQuery,
+					"number", number,
+					"responsible_id", requestedID,
+					"request_id", middleware.RequestIDFromContext(ctx),
+					"user_id", middleware.UserIDFromContext(ctx),
+				)
+				return detail, nil
+			}
+			c.logger.Warn(
+				"change_responsible_sc accepted but find_sc still stale",
+				"variant", attempt.label,
+				"query_mode", useQuery,
+				"number", number,
+				"requested_responsible_id", requestedID,
+				"requested_team_id", request.TeamID,
+				"find_sc_responsible_id", detail.ResponsibleEmployeeID,
+				"find_sc_responsible_title", detail.ResponsibleEmployee,
+				"request_id", middleware.RequestIDFromContext(ctx),
+				"user_id", middleware.UserIDFromContext(ctx),
+			)
 		}
 	}
-	return detail, nil
+
+	if lastMutationErr != nil && lastDetail.Number == "" {
+		return models.TicketDetail{}, lastMutationErr
+	}
+	if lastDetail.Number == "" {
+		lastDetail.Number = strings.TrimSpace(number)
+	}
+	return models.TicketDetail{}, &ResponsibleChangeNotConfirmedError{
+		Number:                 number,
+		RequestedResponsibleID: requestedID,
+		ActualResponsibleID:    lastDetail.ResponsibleEmployeeID,
+		ActualResponsibleTitle: lastDetail.ResponsibleEmployee,
+	}
 }
 
 func responsibleOptionMatch(options []models.ResponsibleOption, responsibleID, teamID string) (models.ResponsibleOption, bool) {
