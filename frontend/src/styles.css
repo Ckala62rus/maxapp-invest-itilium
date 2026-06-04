@@ -212,6 +212,7 @@ button {
   position: relative;
   z-index: 30;
   flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .screen {
@@ -317,10 +318,12 @@ button {
 .burger-menu {
   position: absolute;
   top: calc(100% + 10px);
-  right: 0;
-  left: auto;
-  width: min(360px, calc(100vw - 48px));
-  min-width: 240px;
+  left: 0;
+  right: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   z-index: 29;
   display: grid;
   gap: 8px;
@@ -1036,16 +1039,50 @@ body.swal2-shown .swal2-container,
     flex-direction: column;
   }
 
+  .app-header-brand {
+    order: 1;
+    width: 100%;
+  }
+
   .app-header-nav {
-    align-self: flex-end;
-    width: auto;
+    order: 0;
+    align-self: flex-start;
+    width: 100%;
     max-width: 100%;
   }
 
   .burger-menu {
     left: 0;
     right: auto;
-    width: min(100vw - 24px, 360px);
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 641px) {
+  .app-header {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .app-header-brand {
+    order: 0;
+    width: auto;
+  }
+
+  .app-header-nav {
+    order: 1;
+    align-self: flex-start;
+    margin-left: auto;
+    width: auto;
+  }
+
+  .burger-menu {
+    left: auto;
+    right: 0;
+    width: min(360px, calc(100vw - 96px));
     min-width: 240px;
+    max-width: min(360px, 100%);
   }
 }
