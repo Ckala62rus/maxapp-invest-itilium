@@ -57,6 +57,7 @@
 - `change_state_sc` may return HTTP 200 with `"Новое состояние установлено"` — backend must not treat that JSON string as an error (was HTTP 400 + UI «не удалось открыть»).
 - SweetAlert2 confirm («Смена статуса») could freeze in MAX/Qt WebView: CSS `.swal2-container:not(.swal2-shown) { pointer-events: none }` left the open dialog non-clickable when `swal2-shown` is only on `body`. Fix: scope hidden containers to `body:not(.swal2-shown)`, enable `pointer-events` on shown containers, shared `confirmDialog.js` with `didOpen` forcing interaction on container/buttons; used in `TicketDetailsScreen` and `useTicketFlow`.
 - Кнопки статуса («04_В работе» и т.д.) казались мёртвыми: `MutationObserver` в `ensureMobileInteractions.js` вызывал `purgeTouchBlockers()` при **добавлении** `.swal2-container` и сразу скрывал confirm. Fix: убрать purge на add; `purgeTouchBlockers` пропускает активный `Swal.isVisible()`; `confirmDialog`/`busyModal` в `didOpen` выставляют `swal2-shown` и `display:flex`, в `didClose` — очистка.
+- `change_responsible_sc` на тестовом контуре часто даёт **204** и пустое тело, а `find_sc` ещё 1–2 с отдаёт старого исполнителя. Fix: опрос `find_sc` (до ~2.5 с), overlay по `responsibles_sc`, Redis overlay 10 мин; UI закрывает панель выбора и показывает баннер успеха.
 
 ## Important Decisions
 

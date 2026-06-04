@@ -53,6 +53,10 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  responsibleSuccessTick: {
+    type: Number,
+    default: 0
+  },
   statusForm: {
     type: Object,
     required: true
@@ -103,6 +107,7 @@ const activePanel = ref('')
 const statusChangeError = ref('')
 /** Краткое уведомление после успешной отправки комментария (панель формы при этом скрывается). */
 const showCommentSuccess = ref(false)
+const showResponsibleSuccess = ref(false)
 const commentEmptyError = ref(false)
 const isCommentPanelVisible = computed(() => activePanel.value === 'comment')
 const isRatingPanelVisible = computed(() => activePanel.value === 'rating')
@@ -133,9 +138,23 @@ watch(
 )
 
 watch(
+  () => props.responsibleSuccessTick,
+  (next, prev) => {
+    if (next > 0 && next !== prev) {
+      activePanel.value = ''
+      showResponsibleSuccess.value = true
+      window.setTimeout(() => {
+        showResponsibleSuccess.value = false
+      }, 6500)
+    }
+  }
+)
+
+watch(
   () => props.selectedTicket?.number,
   () => {
     showCommentSuccess.value = false
+    showResponsibleSuccess.value = false
     commentEmptyError.value = false
     activePanel.value = ''
     ratingMark.value = null
@@ -436,6 +455,14 @@ const statusDateHint = computed(() => {
       Комментарий успешно отправлен. Карточка заявки обновлена.
     </div>
 
+    <div
+      v-if="selectedTicket && showResponsibleSuccess"
+      class="comment-success-banner"
+      role="status"
+    >
+      Ответственный по заявке обновлён. В карточке показаны актуальные данные.
+    </div>
+
     <article v-if="isLoadingTicketDetails" class="state-card">
       <div class="spinner"></div>
       <div>
@@ -686,7 +713,10 @@ const statusDateHint = computed(() => {
       </div>
     </article>
 
-    <article v-if="selectedTicket && selectedTicket.canChangeResponsible && isResponsibleSelectionVisible" class="content-card">
+    <article
+      v-if="selectedTicket && selectedTicket.canChangeResponsible && isResponsibleSelectionVisible"
+      class="content-card responsible-change-panel"
+    >
       <h3>Выбор нового ответственного</h3>
       <article v-if="isLoadingResponsibleOptions" class="state-card compact">
         <div class="spinner"></div>
@@ -737,7 +767,8 @@ const statusDateHint = computed(() => {
                 </p>
               </div>
               <button
-                class="ghost-button"
+                type="button"
+                class="ghost-button responsible-assign-button"
                 :disabled="isChangingResponsible"
                 @click="assignResponsible(person.externalId)"
               >

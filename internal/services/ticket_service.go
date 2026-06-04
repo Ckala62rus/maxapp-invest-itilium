@@ -11,7 +11,7 @@ import (
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/repository"
 )
 
-const ticketMutationCacheTTL = 2 * time.Minute
+const ticketMutationCacheTTL = 10 * time.Minute
 
 // ItiliumClient describes external ITILIUM calls consumed by the service layer.
 type ItiliumClient interface {

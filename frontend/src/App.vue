@@ -81,6 +81,7 @@ const {
   commentAttachmentFiles,
   commentSuccessTick,
   ratingSuccessTick,
+  responsibleSuccessTick,
   detailsOrigin,
   statusForm,
   selectedResponsibleId,
@@ -326,6 +327,7 @@ function openResponsibleTicketDetails(ticketNumber) {
           :comment-attachment-files="commentAttachmentFiles"
           :comment-success-tick="commentSuccessTick"
           :rating-success-tick="ratingSuccessTick"
+          :responsible-success-tick="responsibleSuccessTick"
           :is-submitting-comment="isSubmittingComment"
           :status-form="statusForm"
           :available-status-options="availableStatusOptions"

@@ -2153,41 +2153,76 @@ func (c *Client) ChangeStatus(ctx context.Context, number string, request models
 	return detail, nil
 }
 
-// ChangeResponsible changes the responsible person of a ticket.
-func (c *Client) ChangeResponsible(ctx context.Context, number string, request models.ChangeResponsibleRequest) (models.TicketDetail, error) {
+// buildChangeResponsibleForm собирает поля POST /change_responsible_sc по контракту 1С.
+func buildChangeResponsibleForm(number string, request models.ChangeResponsibleRequest) url.Values {
 	form := url.Values{}
-	// Совместимость с legacy: и id, и telegram передаём одинаковым MAX user id.
-	form.Set("id", strings.TrimSpace(request.UserID))
-	form.Set("telegram", strings.TrimSpace(request.UserID))
+	userID := strings.TrimSpace(request.UserID)
+	form.Set("id", userID)
+	form.Set("telegram", userID)
 	form.Set("inc_number", strings.TrimSpace(number))
 	form.Set("responsibleEmployeeId", strings.TrimSpace(request.ResponsibleID))
+	return form
+}
 
-	payload, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form)
-	if err != nil {
-		return models.TicketDetail{}, err
+// responsibleChangePollDelays — паузы перед повторным find_sc: 1С часто отдаёт старого исполнителя сразу после 204.
+var responsibleChangePollDelays = []time.Duration{0, 300 * time.Millisecond, 800 * time.Millisecond, 1500 * time.Millisecond}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
 	}
-	if err := parseItiliumMutationResponse(payload); err != nil {
-		return models.TicketDetail{}, err
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// pollTicketResponsibleAfterChange ждёт, пока find_sc вернёт выбранного исполнителя, либо отдаёт последний ответ.
+func (c *Client) pollTicketResponsibleAfterChange(ctx context.Context, userID, number, requestedID string) (models.TicketDetail, error) {
+	trimmedID := strings.TrimSpace(requestedID)
+	var detail models.TicketDetail
+	var lastErr error
+
+	for _, delay := range responsibleChangePollDelays {
+		if err := sleepContext(ctx, delay); err != nil {
+			return detail, err
+		}
+		detail, lastErr = c.GetTicket(ctx, userID, number)
+		if lastErr != nil {
+			continue
+		}
+		if trimmedID == "" || strings.TrimSpace(detail.ResponsibleEmployeeID) == trimmedID {
+			return detail, nil
+		}
 	}
 
-	// Возвращаем обновлённую карточку после изменения ответственного.
-	detail, err := c.GetTicket(ctx, request.UserID, number)
-	if err != nil {
-		return models.TicketDetail{
-			Number: number,
-		}, nil
-	}
-
-	requestedID := strings.TrimSpace(request.ResponsibleID)
-	if requestedID == "" {
+	if detail.Number != "" {
 		return detail, nil
+	}
+	if lastErr != nil {
+		return models.TicketDetail{Number: number}, lastErr
+	}
+	return models.TicketDetail{Number: number}, nil
+}
+
+func applyResponsibleAssigneeOverlay(
+	ctx context.Context,
+	c *Client,
+	detail models.TicketDetail,
+	userID, number, requestedID string,
+) models.TicketDetail {
+	if strings.TrimSpace(requestedID) == "" {
+		return detail
 	}
 	if strings.TrimSpace(detail.ResponsibleEmployeeID) == requestedID {
-		return detail, nil
+		return detail
 	}
 
-	// 1С часто отвечает 204 на change_responsible_sc, но мгновенный find_sc ещё с прежним исполнителем.
-	options, optionsErr := c.ListResponsibleOptions(ctx, request.UserID, number)
+	options, optionsErr := c.ListResponsibleOptions(ctx, userID, number)
 	if optionsErr != nil {
 		c.logger.Warn(
 			"find_sc returned stale responsible after change_responsible_sc, responsibles lookup failed",
@@ -2198,11 +2233,14 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 			"request_id", middleware.RequestIDFromContext(ctx),
 			"user_id", middleware.UserIDFromContext(ctx),
 		)
-		return detail, nil
+		detail.ResponsibleEmployeeID = requestedID
+		return detail
 	}
-	if option, ok := responsibleOptionByID(options, requestedID); ok {
+
+	option, ok := responsibleOptionByID(options, requestedID)
+	if !ok {
 		c.logger.Warn(
-			"find_sc returned stale responsible after change_responsible_sc, applying selected assignee overlay",
+			"find_sc returned stale responsible after change_responsible_sc, assignee not found in responsibles_sc",
 			"number", number,
 			"requested_responsible_id", requestedID,
 			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
@@ -2210,14 +2248,45 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 			"user_id", middleware.UserIDFromContext(ctx),
 		)
 		detail.ResponsibleEmployeeID = requestedID
-		if option.Person != "" {
-			detail.ResponsibleEmployee = option.Person
-		}
-		if option.Team != "" {
-			detail.ResponsibleTeam = option.Team
-		}
+		return detail
 	}
-	return detail, nil
+
+	c.logger.Warn(
+		"find_sc returned stale responsible after change_responsible_sc, applying selected assignee overlay",
+		"number", number,
+		"requested_responsible_id", requestedID,
+		"find_sc_responsible_id", detail.ResponsibleEmployeeID,
+		"request_id", middleware.RequestIDFromContext(ctx),
+		"user_id", middleware.UserIDFromContext(ctx),
+	)
+	detail.ResponsibleEmployeeID = requestedID
+	if option.Person != "" {
+		detail.ResponsibleEmployee = option.Person
+	}
+	if option.Team != "" {
+		detail.ResponsibleTeam = option.Team
+	}
+	return detail
+}
+
+// ChangeResponsible changes the responsible person of a ticket.
+func (c *Client) ChangeResponsible(ctx context.Context, number string, request models.ChangeResponsibleRequest) (models.TicketDetail, error) {
+	form := buildChangeResponsibleForm(number, request)
+
+	payload, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form)
+	if err != nil {
+		return models.TicketDetail{}, err
+	}
+	if err := parseItiliumMutationResponse(payload); err != nil {
+		return models.TicketDetail{}, err
+	}
+
+	requestedID := strings.TrimSpace(request.ResponsibleID)
+	detail, err := c.pollTicketResponsibleAfterChange(ctx, request.UserID, number, requestedID)
+	if err != nil {
+		return models.TicketDetail{Number: number}, nil
+	}
+	return applyResponsibleAssigneeOverlay(ctx, c, detail, request.UserID, number, requestedID), nil
 }
 
 func responsibleOptionByID(options []models.ResponsibleOption, responsibleID string) (models.ResponsibleOption, bool) {

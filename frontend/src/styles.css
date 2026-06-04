@@ -610,6 +610,15 @@ select {
   z-index: 3;
 }
 
+.responsible-change-panel .responsible-group-panel {
+  position: relative;
+  z-index: 2;
+}
+
+.responsible-change-panel .responsible-assign-button {
+  touch-action: manipulation;
+}
+
 .status-change-panel .status-postpone-date {
   position: relative;
   z-index: 1;

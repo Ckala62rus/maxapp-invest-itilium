@@ -12,7 +12,8 @@ const INTERACTIVE_SELECTOR = [
   '.secondary-button',
   '.ghost-button',
   '.file-chip-remove',
-  '.responsible-group-header:not(:disabled)'
+  '.responsible-group-header:not(:disabled)',
+  '.responsible-assign-button'
 ].join(', ')
 
 const TOUCH_MOVE_THRESHOLD_PX = 14

@@ -185,6 +185,25 @@ func TestParseItiliumMutationResponseTreatsStateChangedAsSuccess(t *testing.T) {
 	}
 }
 
+func TestBuildChangeResponsibleFormUsesIncNumberAndEmployeeId(t *testing.T) {
+	t.Parallel()
+
+	form := buildChangeResponsibleForm("0000024299", models.ChangeResponsibleRequest{
+		UserID:        "7266499",
+		ResponsibleID: "0000000299",
+	})
+
+	if form.Get("id") != "7266499" || form.Get("telegram") != "7266499" {
+		t.Fatalf("user id fields = id %q telegram %q", form.Get("id"), form.Get("telegram"))
+	}
+	if form.Get("inc_number") != "0000024299" {
+		t.Fatalf("inc_number = %q, want 0000024299", form.Get("inc_number"))
+	}
+	if form.Get("responsibleEmployeeId") != "0000000299" {
+		t.Fatalf("responsibleEmployeeId = %q, want 0000000299", form.Get("responsibleEmployeeId"))
+	}
+}
+
 func TestBuildChangeStateFormPostponeUsesCalendarDateInc(t *testing.T) {
 	t.Parallel()
 

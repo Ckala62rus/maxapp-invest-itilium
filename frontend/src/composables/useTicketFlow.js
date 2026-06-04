@@ -31,6 +31,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const commentSuccessTick = ref(0)
   /** После успешной отправки оценки — закрыть панель оценки в карточке. */
   const ratingSuccessTick = ref(0)
+  /** После успешной смены ответственного — закрыть панель выбора и показать уведомление. */
+  const responsibleSuccessTick = ref(0)
   const detailsOrigin = ref('search')
 
   // The status form mirrors the backend transition contract used by the ticket card.
@@ -558,6 +560,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
     if (response?.data?.success) {
       submitBanner.value = 'Ответственный по заявке обновлен.'
+      responsibleSuccessTick.value += 1
       return
     }
 
@@ -611,6 +614,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     commentAttachmentFiles,
     commentSuccessTick,
     ratingSuccessTick,
+    responsibleSuccessTick,
     detailsOrigin,
     statusForm,
     selectedResponsibleId,
