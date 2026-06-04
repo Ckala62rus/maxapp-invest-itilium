@@ -443,17 +443,8 @@ const statusDateHint = computed(() => {
       </div>
     </article>
 
-    <article v-else-if="ticketErrors.length" class="content-card">
-      <h3>Заявку не удалось открыть</h3>
-      <p>{{ ticketErrors[0] }}</p>
-      <div class="hero-actions">
-        <button class="primary-button" @click="openScreen(detailsOrigin === 'myTickets' ? 'myTickets' : 'search')">
-          {{ detailsOrigin === 'myTickets' ? 'Вернуться к моим заявкам' : 'Вернуться к поиску' }}
-        </button>
-      </div>
-    </article>
-
     <article v-else-if="selectedTicket" class="content-card">
+      <p v-if="ticketErrors.length" class="status-pill rose">{{ ticketErrors[0] }}</p>
       <div class="details-grid">
         <div>
           <span>Тема</span>
@@ -511,6 +502,16 @@ const statusDateHint = computed(() => {
           @click="openRatingPanel"
         >
           Оценить решение
+        </button>
+      </div>
+    </article>
+
+    <article v-else-if="ticketErrors.length" class="content-card">
+      <h3>Заявку не удалось открыть</h3>
+      <p>{{ ticketErrors[0] }}</p>
+      <div class="hero-actions">
+        <button type="button" class="primary-button" @click="openScreen(detailsOrigin === 'myTickets' ? 'myTickets' : 'search')">
+          {{ detailsOrigin === 'myTickets' ? 'Вернуться к моим заявкам' : 'Вернуться к поиску' }}
         </button>
       </div>
     </article>

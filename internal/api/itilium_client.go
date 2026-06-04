@@ -1350,10 +1350,63 @@ func decodeItiliumResponseMessage(payload []byte) string {
 	return decodeMarketingResponseMessage(payload)
 }
 
-// parseItiliumMutationResponse трактует тело multipart-мутации: пустое — успех, JSON-строка — ошибка 1С.
+// isItiliumMutationSuccessMessage распознаёт подтверждения 1С при HTTP 200 (не путать с ошибками).
+func isItiliumMutationSuccessMessage(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
+		return true
+	}
+	successPhrases := []string{
+		"новое состояние установлено",
+		"состояние установлено",
+		"ответственный изменен",
+		"ответственный назначен",
+		"успешно",
+	}
+	for _, phrase := range successPhrases {
+		if strings.Contains(normalized, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// isItiliumMutationBusinessErrorMessage распознаёт текстовые ошибки 1С в теле при HTTP 200.
+func isItiliumMutationBusinessErrorMessage(message string) bool {
+	if isItiliumMutationSuccessMessage(message) {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
+		return false
+	}
+	errorSubstrings := []string{
+		"не заполнен",
+		"ошибк",
+		"не может",
+		"преобразование",
+		"неверн",
+		"отказ",
+		"не удалось",
+		"недопустим",
+		"запрещ",
+		"не указан",
+		"не указано",
+		"не найден",
+	}
+	for _, sub := range errorSubstrings {
+		if strings.Contains(normalized, sub) {
+			return true
+		}
+	}
+	// Неизвестное непустое сообщение — считаем ошибкой, чтобы не пропустить новые отказы 1С.
+	return true
+}
+
+// parseItiliumMutationResponse трактует тело multipart-мутации 1С при HTTP 200.
 func parseItiliumMutationResponse(payload []byte) error {
 	message := decodeItiliumResponseMessage(payload)
-	if message == "" {
+	if !isItiliumMutationBusinessErrorMessage(message) {
 		return nil
 	}
 	return errors.New(message)

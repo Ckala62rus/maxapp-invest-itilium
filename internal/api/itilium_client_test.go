@@ -176,6 +176,15 @@ func TestParseItiliumMutationResponseAllowsEmptySuccessBody(t *testing.T) {
 	}
 }
 
+func TestParseItiliumMutationResponseTreatsStateChangedAsSuccess(t *testing.T) {
+	t.Parallel()
+
+	err := parseItiliumMutationResponse([]byte(`"Новое состояние установлено"`))
+	if err != nil {
+		t.Fatalf("parseItiliumMutationResponse() error = %v, want nil for 1C success message", err)
+	}
+}
+
 func TestBuildChangeStateFormPostponeUsesCalendarDateInc(t *testing.T) {
 	t.Parallel()
 
