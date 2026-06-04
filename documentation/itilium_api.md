@@ -564,9 +564,10 @@
 
 ### `POST /create_sc_Marketing`
 
-- Отправляется как `multipart/form-data`.
-- Общие поля: `id`, `Services`, `Subdivision`, `ExecutionDate` (формат `YYYY-MM-DD`, например `2026-06-04`, когда дата используется), опционально части `files`.
-- На 2026-04-29 `Subdivision` и `ExecutionDate` намеренно отправляются пустыми из backend, чтобы проверить live-поведение 1С после упрощения формы в mini app.
+- **Без файлов (itilium_test):** рекомендуется `POST` с пустым телом и полями в **query**: `id`, `Services`, `Subdivision`, `ExecutionDate`, `FormNumber`, `Description` (+ service-specific поля). Не смешивать дубли алиасов (`Service`, `services`, `КомпонентаУслуги`) в одном запросе.
+- **С файлами:** `multipart/form-data` с теми же именами полей и частями `files`; на части публикаций 1С не читает multipart body — тогда услуга/подразделение/дата должны дублироваться в query.
+- **`ExecutionDate`** — желаемая дата исполнения (когда выполнить работу маркетинга). Backend пробует `YYYY-MM-DD`, `DD.MM.YYYY`, `DD.MM.YYYY 0:00:00` (как `creationDate` в `find_sc`).
+- Опционально `WithoutDate=Истина` только если дата не указана; `WithoutDate=Ложь` вместе с датой на части публикаций ломает приём `ExecutionDate`.
 - Для услуги `Дизайн` добавляются поля: `LayoutName`, `Size`, `ForWhat`, `RequiredText`, `LayoutFormats`, опционально `LinkToFoto`, `LinkToExamples`.
 - Для услуги `Мероприятие` добавляются поля: `ThemeEvent`, `Description`, `Budget`, опционально `LinkToFoto`, `LinkToExamples`.
 

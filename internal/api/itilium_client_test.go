@@ -158,8 +158,15 @@ func TestMarketingDateFieldVariantsIncludeDocumentedExecutionDate(t *testing.T) 
 	if len(variants) == 0 {
 		t.Fatal("marketingDateFieldVariants() returned no variants")
 	}
-	if variants[0].Get("ExecutionDate") != "2026-07-01" {
-		t.Fatalf("first variant ExecutionDate = %q, want 2026-07-01", variants[0].Get("ExecutionDate"))
+	hasISO := false
+	for _, variant := range variants {
+		if variant.Get("ExecutionDate") == "2026-07-01" {
+			hasISO = true
+			break
+		}
+	}
+	if !hasISO {
+		t.Fatalf("marketingDateFieldVariants() must include ExecutionDate=2026-07-01, got %v", variants)
 	}
 }
 

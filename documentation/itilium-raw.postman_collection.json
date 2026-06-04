@@ -48,6 +48,22 @@
     {
       "key": "newState",
       "value": "04_В работе"
+    },
+    {
+      "key": "marketingService",
+      "value": "SMM"
+    },
+    {
+      "key": "marketingSubdivision",
+      "value": "Банкетный зал 'Время Счастья'"
+    },
+    {
+      "key": "marketingFormNumber",
+      "value": "3"
+    },
+    {
+      "key": "marketingExecutionDate",
+      "value": "2026-06-25"
     }
   ],
   "item": [
@@ -514,8 +530,57 @@
           }
         },
         {
-          "name": "create_sc_Marketing (POST multipart)",
-          "description": "Создание маркетинговой заявки (услуга, подразделение, дата исполнения, поля формы, файлы).",
+          "name": "create_sc_Marketing (POST query)",
+          "description": "Рекомендуемый способ на itilium_test: POST без тела, все поля в query. Backend MAX mini app использует этот вариант первым.\n\nЖелаемая дата исполнения (когда маркетинг должен выполнить работу) — поле ExecutionDate. Пробуйте форматы: YYYY-MM-DD (2026-06-25), DD.MM.YYYY (25.06.2026), DD.MM.YYYY H:MM:SS (25.06.2026 0:00:00).\n\nНе дублируйте алиасы (Service/services/КомпонентаУслуги) в одном запросе — 1С может их не распознать.",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/create_sc_Marketing?id={{userId}}&Services={{marketingService}}&Subdivision={{marketingSubdivision}}&ExecutionDate={{marketingExecutionDate}}&FormNumber={{marketingFormNumber}}&Description=Маркетинговая заявка из Postman",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "create_sc_Marketing"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор пользователя MAX/ITILIUM."
+                },
+                {
+                  "key": "Services",
+                  "value": "{{marketingService}}",
+                  "description": "Маркетинговая услуга (SMM, Дизайн, Мероприятие и т.д.)."
+                },
+                {
+                  "key": "Subdivision",
+                  "value": "{{marketingSubdivision}}",
+                  "description": "Подразделение из listSubdivisionMarketing."
+                },
+                {
+                  "key": "ExecutionDate",
+                  "value": "{{marketingExecutionDate}}",
+                  "description": "Желаемая дата исполнения. ISO YYYY-MM-DD; при отказе 1С — DD.MM.YYYY или DD.MM.YYYY 0:00:00."
+                },
+                {
+                  "key": "FormNumber",
+                  "value": "{{marketingFormNumber}}",
+                  "description": "НомерФормы из listServicesMarketing."
+                },
+                {
+                  "key": "Description",
+                  "value": "Маркетинговая заявка из Postman",
+                  "description": "Текст заявки / поля формы SMM (и др.)."
+                }
+              ]
+            },
+            "description": "Создание маркетинговой заявки через query (без multipart body). Успех — номер заявки или JSON-строка без текста про «желаемую дату исполнения»."
+          }
+        },
+        {
+          "name": "create_sc_Marketing (POST multipart + files)",
+          "description": "Создание с вложениями: multipart/form-data. На itilium_test тело multipart может не читаться (1С отвечает «не указана услуга/подразделение/дата») — для отладки без файлов используйте POST query.",
           "request": {
             "method": "POST",
             "body": {
@@ -525,48 +590,48 @@
                   "key": "id",
                   "value": "{{userId}}",
                   "type": "text",
-                  "description": "Идентификатор пользователя MAX/ITILIUM (кто выполняет действие)."
+                  "description": "Идентификатор пользователя MAX/ITILIUM."
                 },
                 {
                   "key": "Services",
-                  "value": "SMM",
+                  "value": "{{marketingService}}",
                   "type": "text",
-                  "description": "Маркетинговая услуга (например SMM, Дизайн, Мероприятие)."
+                  "description": "Маркетинговая услуга."
                 },
                 {
                   "key": "Subdivision",
-                  "value": "Банкетный зал 'Время Счастья'",
+                  "value": "{{marketingSubdivision}}",
                   "type": "text",
-                  "description": "Подразделение-инициатор маркетинговой заявки."
+                  "description": "Подразделение-инициатор."
                 },
                 {
                   "key": "ExecutionDate",
-                  "value": "2026-07-01",
+                  "value": "{{marketingExecutionDate}}",
                   "type": "text",
-                  "description": "Желаемая дата исполнения в формате YYYY-MM-DD (например 2026-06-04)."
+                  "description": "Желаемая дата исполнения (см. варианты формата в POST query)."
                 },
                 {
                   "key": "FormNumber",
-                  "value": "3",
+                  "value": "{{marketingFormNumber}}",
                   "type": "text",
-                  "description": "Номер формы маркетинговой услуги из 1С."
+                  "description": "Номер формы из 1С."
                 },
                 {
                   "key": "Description",
                   "value": "Маркетинговая заявка из Postman",
                   "type": "text",
-                  "description": "Параметр Description."
+                  "description": "Описание заявки."
                 },
                 {
                   "key": "files",
                   "type": "file",
                   "src": "",
-                  "description": "Файл-вложение (можно указать несколько частей files)."
+                  "description": "Вложение (несколько частей files)."
                 }
               ]
             },
             "url": "{{itiliumBaseUrl}}/create_sc_Marketing",
-            "description": "Создание маркетинговой заявки (услуга, подразделение, дата исполнения, поля формы, файлы)."
+            "description": "Маркетинговая заявка с файлами. Поля только с каноничными именами 1С, без дублей алиасов."
           }
         }
       ]

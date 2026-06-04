@@ -357,6 +357,7 @@
         },
         {
           "name": "Create Marketing Request",
+          "description": "Маркетинговая заявка. executionDate — желаемая дата исполнения (YYYY-MM-DD из UI). Backend проксирует в 1С create_sc_Marketing (query + retry форматов даты).",
           "request": {
             "method": "POST",
             "header": [

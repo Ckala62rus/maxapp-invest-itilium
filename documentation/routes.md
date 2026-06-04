@@ -151,4 +151,4 @@ Every request passes through the same middleware chain defined in `internal/hand
 - Handler: `Handler.CreateMarketingRequest`
 - Service: `TicketService.CreateMarketingRequest`
 - Middleware: `RequireIdentity`
-- Flow: создаёт маркетинговую заявку через `POST /create_sc_Marketing` multipart (`id`, `Services`, обязательные `Subdivision`/`ExecutionDate`, `files` и service-specific поля).
+- Flow: создаёт маркетинговую заявку через `POST /create_sc_Marketing` (сначала query: `id`, `Services`, `Subdivision`, `ExecutionDate`, `FormNumber`, `Description`; с файлами — multipart + `files`).

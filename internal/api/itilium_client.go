@@ -1074,17 +1074,28 @@ func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url
 
 	var lastPayload []byte
 
-	// Контракт Postman: все поля в multipart body без query (id, Services, Subdivision, ExecutionDate).
-	multipartForm := marketingCreateMultipartForm(form)
-	payload, err := c.doMultipartFormPostBytes(ctx, pathCreateSCMarketing, multipartForm)
-	if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
-		return payload, nil
-	}
-	if err != nil && !isRetryableMarketingCreateError(err) {
-		return nil, err
-	}
-	if err == nil {
-		lastPayload = payload
+	// Минимальный query без дублей алиасов (на тестовом контуре 1С читает услугу/подразделение из query, не из multipart body).
+	for idx, postmanQuery := range buildMarketingCreatePostmanQueryVariants(form) {
+		payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, postmanQuery)
+		if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
+			return payload, nil
+		}
+		if err != nil && !isRetryableMarketingCreateError(err) {
+			return nil, err
+		}
+		if err == nil {
+			lastPayload = payload
+			if !isMarketingExecutionDateOnlyMissingResponse(payload) {
+				break
+			}
+			continue
+		}
+		c.logger.Warn(
+			"create_sc_Marketing postman query variant failed with retryable error",
+			"variant_index", idx,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
 	}
 
 	// Сначала — все поля в query, дата в формате YYYY-MM-DD (контракт 1С после фикса).
@@ -1197,7 +1208,7 @@ func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url
 	)
 	fullForm := cloneURLValues(form)
 	appendMarketingExecutionDateAliases(fullForm, rawExecutionDate)
-	payload, err = c.doPostEmptyQuery(ctx, pathCreateSCMarketing, fullForm)
+	payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, fullForm)
 	if err != nil {
 		return nil, err
 	}
@@ -1271,12 +1282,15 @@ func appendMarketingExecutionDateAliases(form url.Values, rawDate string) {
 		return
 	}
 
-	// 1С на тестовом контуре принимает дату как YYYY-MM-DD (например 2026-06-04).
+	calendarDate := formatItiliumCalendarDate(rawDate)
+	calendarDateTime := formatItiliumCalendarDateTime(rawDate)
+
+	// 1С на разных публикациях ожидает ISO, календарную дату или дату-время как в find_sc.
 	for key, value := range map[string]string{
-		"ExecutionDate":          isoDate,
+		"ExecutionDate":          calendarDateTime,
+		"ЖелаемаяДатаИсполнения": calendarDateTime,
+		"ДатаИсполнения":         calendarDate,
 		"executionDate":          isoDate,
-		"ДатаИсполнения":         isoDate,
-		"ЖелаемаяДатаИсполнения": isoDate,
 		"DesiredExecutionDate":   isoDate,
 		"ExecutionDateISO":       isoDate,
 		"date_inc":               isoDate,
@@ -1310,13 +1324,20 @@ func marketingDateFieldVariants(rawDate string) []url.Values {
 	if isoDate == "" {
 		return nil
 	}
+	calendarDate := formatItiliumCalendarDate(rawDate)
+	calendarDateTime := formatItiliumCalendarDateTime(rawDate)
 
 	candidates := []struct {
 		key   string
 		value string
 	}{
+		{"ExecutionDate", calendarDateTime},
+		{"ЖелаемаяДатаИсполнения", calendarDateTime},
+		{"ExecutionDate", calendarDate},
+		{"ЖелаемаяДатаИсполнения", calendarDate},
 		{"ExecutionDate", isoDate},
 		{"ЖелаемаяДатаИсполнения", isoDate},
+		{"ДатаИсполнения", calendarDateTime},
 		{"ДатаИсполнения", isoDate},
 		{"DesiredExecutionDate", isoDate},
 		{"date_inc", isoDate},
@@ -1378,8 +1399,11 @@ func minimalMarketingDateBodyVariants(rawDate string) []url.Values {
 	if isoDate == "" {
 		return nil
 	}
+	calendarDateTime := formatItiliumCalendarDateTime(rawDate)
 
 	return []url.Values{
+		{"ExecutionDate": {calendarDateTime}},
+		{"ЖелаемаяДатаИсполнения": {calendarDateTime}},
 		{"ExecutionDate": {isoDate}},
 		{"ЖелаемаяДатаИсполнения": {isoDate}},
 		{"ДатаИсполнения": {isoDate}},
@@ -1464,6 +1488,87 @@ func formatItiliumCalendarDate(value string) string {
 		return ""
 	}
 	return parsed.Format("02.01.2006")
+}
+
+// formatItiliumCalendarDateTime приводит дату к DD.MM.YYYY H:MM:SS — как creationDate в find_sc.
+func formatItiliumCalendarDateTime(value string) string {
+	calendarDate := formatItiliumCalendarDate(value)
+	if calendarDate == "" {
+		return ""
+	}
+	return calendarDate + " 0:00:00"
+}
+
+// buildMarketingCreatePostmanQueryVariants возвращает минимальные query с датой в разных форматах 1С.
+func buildMarketingCreatePostmanQueryVariants(form url.Values) []url.Values {
+	rawDate := firstMarketingExecutionDate(form)
+	dateFormats := []string{
+		formatMarketingExecutionDate(rawDate),
+		formatItiliumCalendarDate(rawDate),
+		formatItiliumCalendarDateTime(rawDate),
+	}
+	seen := make(map[string]struct{}, len(dateFormats))
+	variants := make([]url.Values, 0, len(dateFormats))
+	for _, dateValue := range dateFormats {
+		if dateValue == "" {
+			continue
+		}
+		if _, exists := seen[dateValue]; exists {
+			continue
+		}
+		seen[dateValue] = struct{}{}
+		variants = append(variants, buildMarketingCreatePostmanQuery(form, dateValue))
+	}
+	return variants
+}
+
+// buildMarketingCreatePostmanQuery собирает минимальный набор полей create_sc_Marketing (без дублей алиасов).
+func buildMarketingCreatePostmanQuery(form url.Values, executionDate string) url.Values {
+	query := url.Values{}
+	if id := strings.TrimSpace(form.Get("id")); id != "" {
+		query.Set("id", id)
+	}
+	if service := firstNonEmptyFormValue(form, "Services", "Service", "services", "КомпонентаУслуги"); service != "" {
+		query.Set("Services", service)
+	}
+	if subdivision := firstNonEmptyFormValue(form, "Subdivision", "subdivision", "Подразделение"); subdivision != "" {
+		query.Set("Subdivision", subdivision)
+	}
+	if formNumber := firstNonEmptyFormValue(form, "FormNumber", "formNumber", "НомерФормы"); formNumber != "" {
+		query.Set("FormNumber", formNumber)
+	}
+	if description := strings.TrimSpace(form.Get("Description")); description != "" {
+		query.Set("Description", description)
+	}
+	if trimmedDate := strings.TrimSpace(executionDate); trimmedDate != "" {
+		query.Set("ExecutionDate", trimmedDate)
+	}
+	for key, values := range form {
+		if len(values) == 0 || strings.TrimSpace(values[0]) == "" {
+			continue
+		}
+		if _, skip := marketingExecutionDateFieldKeys()[key]; skip {
+			continue
+		}
+		switch key {
+		case "id", "Services", "Service", "services", "КомпонентаУслуги",
+			"Subdivision", "subdivision", "Подразделение",
+			"FormNumber", "formNumber", "НомерФормы", "Description",
+			"WithoutDate", "withoutDate", "БезДаты":
+			continue
+		}
+		query.Set(key, strings.TrimSpace(values[0]))
+	}
+	return query
+}
+
+func firstNonEmptyFormValue(form url.Values, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(form.Get(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // buildChangeStateForm собирает поля для POST /change_state_sc по контракту 1С.
