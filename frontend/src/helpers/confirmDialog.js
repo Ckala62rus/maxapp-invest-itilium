@@ -1,4 +1,5 @@
 import Swal from 'sweetalert2'
+import { purgeTouchBlockers } from '@/helpers/purgeTouchBlockers'
 
 /** Общие классы темы SweetAlert2 для confirm-диалогов mini app. */
 export const swalConfirmClasses = {
@@ -12,9 +13,14 @@ export const swalConfirmClasses = {
  * Принудительно включаем события на контейнере, попапе и кнопках при открытии.
  */
 function enableSwalInteraction(popup) {
+  document.body.classList.add('swal2-shown')
+  document.documentElement.classList.add('swal2-shown')
   const container = Swal.getContainer()
   if (container) {
+    container.style.setProperty('display', 'flex', 'important')
+    container.style.visibility = 'visible'
     container.style.pointerEvents = 'auto'
+    container.removeAttribute('aria-hidden')
   }
   if (popup) {
     popup.style.pointerEvents = 'auto'
@@ -47,6 +53,7 @@ export function confirmAction({
     heightAuto: false,
     customClass: swalConfirmClasses,
     buttonsStyling: true,
-    didOpen: enableSwalInteraction
+    didOpen: enableSwalInteraction,
+    didClose: () => purgeTouchBlockers()
   })
 }

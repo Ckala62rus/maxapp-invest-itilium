@@ -605,6 +605,21 @@ select {
   color: #eef5ff;
 }
 
+.status-change-panel .hero-actions {
+  position: relative;
+  z-index: 3;
+}
+
+.status-change-panel .status-postpone-date {
+  position: relative;
+  z-index: 1;
+}
+
+.status-change-panel .el-picker__popper[aria-hidden='true'],
+.status-change-panel .el-popper[aria-hidden='true'] {
+  pointer-events: none !important;
+}
+
 .status-postpone-date .el-input__prefix .el-icon,
 .status-postpone-date .el-input__suffix .el-icon {
   color: #eef5ff;

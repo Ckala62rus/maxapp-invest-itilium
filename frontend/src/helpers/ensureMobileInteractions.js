@@ -167,9 +167,6 @@ export function ensureMobileInteractions() {
           node.type = 'button'
         }
         patchButtons(node)
-        if (node.matches?.('.swal2-container') || node.querySelector?.('.swal2-container')) {
-          purgeTouchBlockers()
-        }
       })
     })
   })

@@ -8,9 +8,14 @@ const busyPopupClass = {
 }
 
 function enableBusyModalInteraction(popup) {
+  document.body.classList.add('swal2-shown')
+  document.documentElement.classList.add('swal2-shown')
   const container = Swal.getContainer()
   if (container) {
+    container.style.setProperty('display', 'flex', 'important')
+    container.style.visibility = 'visible'
     container.style.pointerEvents = 'auto'
+    container.removeAttribute('aria-hidden')
   }
   popup?.style.setProperty('pointer-events', 'auto')
 }

@@ -312,7 +312,8 @@ function closeStatusSelection() {
   activePanel.value = ''
 }
 
-async function chooseStatus(status, statusForm) {
+async function chooseStatus(status) {
+  const statusForm = props.statusForm
   statusForm.state = status
   const validationError = validateStatusTransition(status, statusForm)
   if (validationError) {
@@ -584,7 +585,10 @@ const statusDateHint = computed(() => {
       </div>
     </article>
 
-    <article v-if="selectedTicket && selectedTicket.canChangeStatus && isStatusSelectionVisible" class="content-card">
+    <article
+      v-if="selectedTicket && selectedTicket.canChangeStatus && isStatusSelectionVisible"
+      class="content-card status-change-panel"
+    >
       <h3>Смена статуса</h3>
       <div class="form-card compact">
         <label>
@@ -617,9 +621,10 @@ const statusDateHint = computed(() => {
         <button
           v-for="status in availableStatusOptions"
           :key="status"
-          class="secondary-button"
+          type="button"
+          class="secondary-button status-change-button"
           :disabled="isChangingStatus"
-          @click="chooseStatus(status, statusForm)"
+          @click="chooseStatus(status)"
         >
           {{ status }}
         </button>

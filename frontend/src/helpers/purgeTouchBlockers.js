@@ -1,7 +1,12 @@
+import Swal from 'sweetalert2'
+
 /**
  * Убирает «залипшие» оверлеи (SweetAlert2 и т.п.), которые на Android WebView перехватывают tap.
  */
 export function purgeTouchBlockers() {
+  if (typeof Swal.isVisible === 'function' && Swal.isVisible()) {
+    return
+  }
   document.body.classList.remove('swal2-shown', 'swal2-height-auto', 'swal2-no-backdrop')
   document.documentElement.classList.remove('swal2-shown')
 
