@@ -37,6 +37,9 @@ function normalizeTicketError(error) {
     }
     return 'Проверьте номер заявки и повторите запрос.'
   }
+  if (statusCode === 502 && backendMessage && String(backendMessage).trim()) {
+    return String(backendMessage).trim()
+  }
   if (/ticket number is required/i.test(rawMessage)) {
     return 'Проверьте номер заявки и повторите запрос.'
   }
@@ -428,7 +431,7 @@ const actions = {
   },
 
   [actionTypes.createTicket](context, payload) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       context.commit(mutationTypes.createTicketStart)
 
       ticketsApi.createTicket(payload)
@@ -605,7 +608,7 @@ const actions = {
   },
 
   [actionTypes.createMarketingRequest](context, payload) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       context.commit(mutationTypes.createMarketingRequestStart)
 
       ticketsApi.createMarketingRequest(payload)

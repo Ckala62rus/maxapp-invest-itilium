@@ -368,6 +368,18 @@
                   "value": "{{responsibleId}}",
                   "type": "text",
                   "description": "ID сотрудника, на которого переводим ответственность."
+                },
+                {
+                  "key": "responsibleTeamId",
+                  "value": "{{responsibleTeamId}}",
+                  "type": "text",
+                  "description": "ID команды из responsibles_sc (опционально, но требуется частью workflow 1С)."
+                },
+                {
+                  "key": "sc_number",
+                  "value": "{{ticketNumber}}",
+                  "type": "text",
+                  "description": "Дубликат номера заявки для совместимости с обработчиками 1С."
                 }
               ]
             },

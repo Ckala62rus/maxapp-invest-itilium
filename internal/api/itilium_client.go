@@ -856,6 +856,7 @@ func parseResponsiblesScResponse(payloadRaw []byte) ([]models.ResponsibleOption,
 	result := make([]models.ResponsibleOption, 0, len(rows)*4)
 	for _, item := range rows {
 		team := pickStringFromMap(item, "responsibleTeamTitle", "ResponsibleTeamTitle", "team", "Team")
+		teamID := pickStringFromMap(item, "responsibleTeamId", "ResponsibleTeamId", "teamId", "TeamId")
 
 		if nested, ok := item["responsibles"]; ok {
 			arr, ok := nested.([]any)
@@ -873,9 +874,10 @@ func parseResponsiblesScResponse(payloadRaw []byte) ([]models.ResponsibleOption,
 					continue
 				}
 				result = append(result, models.ResponsibleOption{
-					Team:       team,
-					Person:     strings.TrimSpace(person),
-					ExternalID: externalID,
+					Team:           team,
+					TeamExternalID: teamID,
+					Person:         strings.TrimSpace(person),
+					ExternalID:     externalID,
 				})
 			}
 			continue
@@ -1047,8 +1049,8 @@ func buildMarketingCreateForm(request models.CreateMarketingRequest) url.Values 
 	setMarketingCreateFieldAliases(form, []string{"Subdivision", "subdivision", "Подразделение"}, request.Subdivision)
 	if trimmedDate := strings.TrimSpace(request.ExecutionDate); trimmedDate != "" {
 		// В query/body отправляем одно документированное поле; алиасы даты перебираются отдельно в retry.
+		// WithoutDate=Ложь вместе с датой на части публикаций 1С приводит к игнорированию ExecutionDate.
 		form.Set("ExecutionDate", formatMarketingExecutionDate(trimmedDate))
-		setMarketingCreateFieldAliases(form, []string{"WithoutDate", "withoutDate", "БезДаты"}, "Ложь")
 	} else if request.WithoutDate {
 		setMarketingCreateFieldAliases(form, []string{"WithoutDate", "withoutDate", "БезДаты"}, "Истина")
 	}
@@ -1071,6 +1073,19 @@ func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url
 	query, dateBody := splitMarketingCreateForm(form)
 
 	var lastPayload []byte
+
+	// Контракт Postman: все поля в multipart body без query (id, Services, Subdivision, ExecutionDate).
+	multipartForm := marketingCreateMultipartForm(form)
+	payload, err := c.doMultipartFormPostBytes(ctx, pathCreateSCMarketing, multipartForm)
+	if err == nil && !isMarketingRequiredFieldsMissingResponse(payload) {
+		return payload, nil
+	}
+	if err != nil && !isRetryableMarketingCreateError(err) {
+		return nil, err
+	}
+	if err == nil {
+		lastPayload = payload
+	}
 
 	// Сначала — все поля в query, дата в формате YYYY-MM-DD (контракт 1С после фикса).
 	if isoDate := formatMarketingExecutionDate(rawExecutionDate); isoDate != "" {
@@ -1182,7 +1197,7 @@ func (c *Client) submitMarketingCreateWithoutFiles(ctx context.Context, form url
 	)
 	fullForm := cloneURLValues(form)
 	appendMarketingExecutionDateAliases(fullForm, rawExecutionDate)
-	payload, err := c.doPostEmptyQuery(ctx, pathCreateSCMarketing, fullForm)
+	payload, err = c.doPostEmptyQuery(ctx, pathCreateSCMarketing, fullForm)
 	if err != nil {
 		return nil, err
 	}
@@ -1312,6 +1327,32 @@ func marketingDateFieldVariants(rawDate string) []url.Values {
 		variants = append(variants, url.Values{candidate.key: {candidate.value}})
 	}
 	return variants
+}
+
+// marketingCreateMultipartForm готовит поля для POST multipart как в Postman (без WithoutDate при указанной дате).
+func marketingCreateMultipartForm(form url.Values) url.Values {
+	multipartForm := cloneURLValues(form)
+	if formatMarketingExecutionDate(firstMarketingExecutionDate(multipartForm)) != "" {
+		for _, key := range []string{"WithoutDate", "withoutDate", "БезДаты"} {
+			multipartForm.Del(key)
+		}
+	}
+	return multipartForm
+}
+
+func firstMarketingExecutionDate(form url.Values) string {
+	dateKeys := marketingExecutionDateFieldKeys()
+	for key, values := range form {
+		if _, isDate := dateKeys[key]; !isDate {
+			continue
+		}
+		for _, value := range values {
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return ""
 }
 
 func splitMarketingCreateForm(form url.Values) (url.Values, url.Values) {
@@ -2157,15 +2198,28 @@ func (c *Client) ChangeStatus(ctx context.Context, number string, request models
 func buildChangeResponsibleForm(number string, request models.ChangeResponsibleRequest) url.Values {
 	form := url.Values{}
 	userID := strings.TrimSpace(request.UserID)
+	trimmedNumber := strings.TrimSpace(number)
 	form.Set("id", userID)
 	form.Set("telegram", userID)
-	form.Set("inc_number", strings.TrimSpace(number))
+	form.Set("inc_number", trimmedNumber)
+	// Дублируем номер: часть обработчиков 1С читает sc_number, а не inc_number.
+	form.Set("sc_number", trimmedNumber)
 	form.Set("responsibleEmployeeId", strings.TrimSpace(request.ResponsibleID))
+	if teamID := strings.TrimSpace(request.TeamID); teamID != "" {
+		form.Set("responsibleTeamId", teamID)
+	}
 	return form
 }
 
 // responsibleChangePollDelays — паузы перед повторным find_sc: 1С часто отдаёт старого исполнителя сразу после 204.
-var responsibleChangePollDelays = []time.Duration{0, 300 * time.Millisecond, 800 * time.Millisecond, 1500 * time.Millisecond}
+var responsibleChangePollDelays = []time.Duration{
+	0,
+	300 * time.Millisecond,
+	800 * time.Millisecond,
+	1500 * time.Millisecond,
+	3 * time.Second,
+	5 * time.Second,
+}
 
 func sleepContext(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
@@ -2209,68 +2263,28 @@ func (c *Client) pollTicketResponsibleAfterChange(ctx context.Context, userID, n
 	return models.TicketDetail{Number: number}, nil
 }
 
-func applyResponsibleAssigneeOverlay(
+// resolveResponsibleTeamID подставляет teamId из responsibles_sc, если UI его не передал.
+func (c *Client) resolveResponsibleTeamID(
 	ctx context.Context,
-	c *Client,
-	detail models.TicketDetail,
-	userID, number, requestedID string,
-) models.TicketDetail {
-	if strings.TrimSpace(requestedID) == "" {
-		return detail
+	userID, number string,
+	request models.ChangeResponsibleRequest,
+) models.ChangeResponsibleRequest {
+	if strings.TrimSpace(request.TeamID) != "" {
+		return request
 	}
-	if strings.TrimSpace(detail.ResponsibleEmployeeID) == requestedID {
-		return detail
+	options, err := c.ListResponsibleOptions(ctx, userID, number)
+	if err != nil {
+		return request
 	}
-
-	options, optionsErr := c.ListResponsibleOptions(ctx, userID, number)
-	if optionsErr != nil {
-		c.logger.Warn(
-			"find_sc returned stale responsible after change_responsible_sc, responsibles lookup failed",
-			"number", number,
-			"requested_responsible_id", requestedID,
-			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
-			"error", optionsErr,
-			"request_id", middleware.RequestIDFromContext(ctx),
-			"user_id", middleware.UserIDFromContext(ctx),
-		)
-		detail.ResponsibleEmployeeID = requestedID
-		return detail
+	if option, ok := responsibleOptionMatch(options, request.ResponsibleID, ""); ok && strings.TrimSpace(option.TeamExternalID) != "" {
+		request.TeamID = option.TeamExternalID
 	}
-
-	option, ok := responsibleOptionByID(options, requestedID)
-	if !ok {
-		c.logger.Warn(
-			"find_sc returned stale responsible after change_responsible_sc, assignee not found in responsibles_sc",
-			"number", number,
-			"requested_responsible_id", requestedID,
-			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
-			"request_id", middleware.RequestIDFromContext(ctx),
-			"user_id", middleware.UserIDFromContext(ctx),
-		)
-		detail.ResponsibleEmployeeID = requestedID
-		return detail
-	}
-
-	c.logger.Warn(
-		"find_sc returned stale responsible after change_responsible_sc, applying selected assignee overlay",
-		"number", number,
-		"requested_responsible_id", requestedID,
-		"find_sc_responsible_id", detail.ResponsibleEmployeeID,
-		"request_id", middleware.RequestIDFromContext(ctx),
-		"user_id", middleware.UserIDFromContext(ctx),
-	)
-	detail.ResponsibleEmployeeID = requestedID
-	if option.Person != "" {
-		detail.ResponsibleEmployee = option.Person
-	}
-	if option.Team != "" {
-		detail.ResponsibleTeam = option.Team
-	}
-	return detail
+	return request
 }
 
 // ChangeResponsible changes the responsible person of a ticket.
 func (c *Client) ChangeResponsible(ctx context.Context, number string, request models.ChangeResponsibleRequest) (models.TicketDetail, error) {
+	request = c.resolveResponsibleTeamID(ctx, request.UserID, number, request)
 	form := buildChangeResponsibleForm(number, request)
 
 	payload, err := c.doMultipartFormPostBytes(ctx, "/change_responsible_sc", form)
@@ -2284,22 +2298,51 @@ func (c *Client) ChangeResponsible(ctx context.Context, number string, request m
 	requestedID := strings.TrimSpace(request.ResponsibleID)
 	detail, err := c.pollTicketResponsibleAfterChange(ctx, request.UserID, number, requestedID)
 	if err != nil {
-		return models.TicketDetail{Number: number}, nil
+		return models.TicketDetail{}, fmt.Errorf("poll ticket after change_responsible_sc: %w", err)
 	}
-	return applyResponsibleAssigneeOverlay(ctx, c, detail, request.UserID, number, requestedID), nil
+	if requestedID != "" && strings.TrimSpace(detail.ResponsibleEmployeeID) != requestedID {
+		c.logger.Warn(
+			"find_sc returned stale responsible after change_responsible_sc",
+			"number", number,
+			"requested_responsible_id", requestedID,
+			"requested_team_id", request.TeamID,
+			"find_sc_responsible_id", detail.ResponsibleEmployeeID,
+			"find_sc_responsible_title", detail.ResponsibleEmployee,
+			"request_id", middleware.RequestIDFromContext(ctx),
+			"user_id", middleware.UserIDFromContext(ctx),
+		)
+		return models.TicketDetail{}, &ResponsibleChangeNotConfirmedError{
+			Number:                 number,
+			RequestedResponsibleID: requestedID,
+			ActualResponsibleID:    detail.ResponsibleEmployeeID,
+			ActualResponsibleTitle: detail.ResponsibleEmployee,
+		}
+	}
+	return detail, nil
 }
 
-func responsibleOptionByID(options []models.ResponsibleOption, responsibleID string) (models.ResponsibleOption, bool) {
+func responsibleOptionMatch(options []models.ResponsibleOption, responsibleID, teamID string) (models.ResponsibleOption, bool) {
 	trimmedID := strings.TrimSpace(responsibleID)
 	if trimmedID == "" {
 		return models.ResponsibleOption{}, false
 	}
+	trimmedTeam := strings.TrimSpace(teamID)
+
+	var fallback models.ResponsibleOption
+	hasFallback := false
 	for _, option := range options {
-		if strings.TrimSpace(option.ExternalID) == trimmedID {
+		if strings.TrimSpace(option.ExternalID) != trimmedID {
+			continue
+		}
+		if trimmedTeam != "" && strings.TrimSpace(option.TeamExternalID) == trimmedTeam {
 			return option, true
 		}
+		if !hasFallback {
+			fallback = option
+			hasFallback = true
+		}
 	}
-	return models.ResponsibleOption{}, false
+	return fallback, hasFallback
 }
 
 // ConfirmTicket sends user rating via legacy confirm_sc (POST, query: id, telegram, incident, mark, optional comment_text).

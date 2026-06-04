@@ -33,13 +33,14 @@ export async function withBusyModal(title, task) {
     allowEscapeKey: false,
     heightAuto: false,
     customClass: busyPopupClass,
-    didOpen: enableBusyModalInteraction
+    didOpen: enableBusyModalInteraction,
+    didClose: () => purgeTouchBlockers()
   })
 
   try {
     return await task()
   } finally {
-    Swal.close()
+    await Swal.close()
     purgeTouchBlockers()
   }
 }

@@ -1,0 +1,382 @@
+{
+  "info": {
+    "name": "MAXAPP ITILIUM API",
+    "_postman_id": "8c7e9ce2-13e0-4c95-89e8-5cd1c48d1e74",
+    "description": "Backend API collection for maxapp-invest-itilium.\n\nVariables:\n- baseUrl: backend URL, e.g. http://localhost:3000\n- accessToken: value from /api/v1/auth/max/validate response data.accessToken\n- userId: optional for debug header fallback\n- ticketNumber: ticket identifier for ticket-specific routes\n- responsibleId: target assignee id for responsible change",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "ticketNumber",
+      "value": "0000019683"
+    },
+    {
+      "key": "responsibleId",
+      "value": "0000000258"
+    }
+  ],
+  "item": [
+    {
+      "name": "Infra",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz"
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/readyz"
+          }
+        },
+        {
+          "name": "Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Validate MAX Auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"initData\": \"query_id=...&user=%7B...%7D&auth_date=...&hash=...\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/max/validate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{userId}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/me"
+          }
+        },
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"40367639\",\n  \"employeeNumber\": \"12345\",\n  \"fullName\": \"Иванов Иван Иванович\",\n  \"organization\": \"Инвест\",\n  \"department\": \"ИТ\",\n  \"position\": \"Специалист\",\n  \"phone\": \"+79001234567\",\n  \"comment\": \"Регистрация из MAX\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/users/register"
+          }
+        },
+        {
+          "name": "Find Employee By Identifier",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"40367639\",\n  \"attributeCode\": \"id\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/users/employee"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "List My Tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/tickets"
+          }
+        },
+        {
+          "name": "List Responsible Tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/tickets/responsible"
+          }
+        },
+        {
+          "name": "Search Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": \"{{ticketNumber}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/tickets/search"
+          }
+        },
+        {
+          "name": "Create Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestType\": \"it\",\n  \"title\": \"Нужна помощь\",\n  \"description\": \"Не работает принтер\",\n  \"department\": \"ИТ\",\n  \"executionDate\": \"2026-07-01\",\n  \"attachments\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/tickets"
+          }
+        },
+        {
+          "name": "Get Ticket",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/tickets/{{ticketNumber}}"
+          }
+        },
+        {
+          "name": "Add Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Проверил, нужна помощь коллег\",\n  \"attachments\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/tickets/{{ticketNumber}}/comments"
+          }
+        },
+        {
+          "name": "Change Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"04_В работе\",\n  \"comment\": \"Берем в работу\",\n  \"date\": \"2026-07-01\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/tickets/{{ticketNumber}}/status"
+          }
+        },
+        {
+          "name": "List Responsible Options",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/tickets/{{ticketNumber}}/responsibles"
+          }
+        },
+        {
+          "name": "Change Responsible",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"responsibleId\": \"{{responsibleId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/tickets/{{ticketNumber}}/responsible"
+          }
+        },
+        {
+          "name": "Confirm Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mark\": 5,\n  \"comment\": \"Отлично выполнено\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/tickets/{{ticketNumber}}/confirm"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Marketing",
+      "item": [
+        {
+          "name": "List Marketing Services",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/marketing/services"
+          }
+        },
+        {
+          "name": "List Marketing Subdivisions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/marketing/subdivisions"
+          }
+        },
+        {
+          "name": "Create Marketing Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCode\": \"SMM\",\n  \"formNumber\": \"3\",\n  \"subdivision\": \"Банкетный зал 'Время Счастья'\",\n  \"executionDate\": \"2026-07-01\",\n  \"withoutDate\": false,\n  \"formData\": {\n    \"Description\": \"Нужен пост и баннер\"\n  },\n  \"attachments\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/marketing/requests"
+          }
+        }
+      ]
+    }
+  ]
+}

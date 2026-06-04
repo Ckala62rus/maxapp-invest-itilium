@@ -534,7 +534,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     return response
   }
 
-  async function assignResponsible(responsibleId) {
+  async function assignResponsible(selection) {
+    const responsibleId = typeof selection === 'string' ? selection : selection?.responsibleId
+    const teamId = typeof selection === 'object' && selection ? selection.teamId : ''
     if (!selectedTicket.value?.number || !responsibleId) {
       return
     }
@@ -554,7 +556,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     const response = await withBusyModal('Назначаем ответственного…', () => store.dispatch(ticketActionTypes.changeResponsible, {
       number: selectedTicket.value.number,
       data: {
-        responsibleId
+        responsibleId,
+        ...(teamId ? { teamId } : {})
       }
     }))
 

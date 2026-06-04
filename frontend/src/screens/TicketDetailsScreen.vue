@@ -319,8 +319,12 @@ function submitStatusChange() {
   emit('submit-status-change')
 }
 
-function assignResponsible(responsibleId) {
-  emit('assign-responsible', responsibleId)
+/** Передаём id сотрудника и команды из responsibles_sc — 1С может требовать responsibleTeamId. */
+function assignResponsible(person) {
+  emit('assign-responsible', {
+    responsibleId: person?.externalId,
+    teamId: person?.teamExternalId
+  })
 }
 
 function openStatusSelection() {
@@ -770,7 +774,7 @@ const statusDateHint = computed(() => {
                 type="button"
                 class="ghost-button responsible-assign-button"
                 :disabled="isChangingResponsible"
-                @click="assignResponsible(person.externalId)"
+                @click="assignResponsible(person)"
               >
                 {{ isChangingResponsible && selectedResponsibleId === person.externalId ? 'Сохраняем...' : 'Выбрать' }}
               </button>

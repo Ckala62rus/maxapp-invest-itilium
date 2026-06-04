@@ -311,6 +311,8 @@ type ChangeResponsibleRequest struct {
 	UserID string `json:"userId"`
 	// ResponsibleID stores the selected target responsible person id.
 	ResponsibleID string `json:"responsibleId"`
+	// TeamID stores the ITILIUM team id from responsibles_sc (required by some 1C workflows).
+	TeamID string `json:"teamId,omitempty"`
 }
 
 // ConfirmTicketRequest stores rating (confirm_sc) payload: mark 0–5, comment required for 0–2.
@@ -327,6 +329,8 @@ type ConfirmTicketRequest struct {
 type ResponsibleOption struct {
 	// Team stores the team name.
 	Team string `json:"team"`
+	// TeamExternalID stores the ITILIUM team identifier from responsibles_sc.
+	TeamExternalID string `json:"teamExternalId,omitempty"`
 	// Person stores the person display name.
 	Person string `json:"person"`
 	// Role stores the person's role.

@@ -101,8 +101,8 @@ func TestSplitMarketingCreateFormSeparatesDateFields(t *testing.T) {
 	if query.Get("Services") != "SMM" {
 		t.Fatalf("query Services = %q, want SMM", query.Get("Services"))
 	}
-	if query.Get("WithoutDate") != "Ложь" {
-		t.Fatalf("query WithoutDate = %q, want Ложь", query.Get("WithoutDate"))
+	if query.Get("WithoutDate") != "" {
+		t.Fatalf("query must not contain WithoutDate when execution date is set, got %q", query.Get("WithoutDate"))
 	}
 	if query.Get("ExecutionDate") != "" {
 		t.Fatalf("query must not contain ExecutionDate, got %q", query.Get("ExecutionDate"))
@@ -115,18 +115,25 @@ func TestSplitMarketingCreateFormSeparatesDateFields(t *testing.T) {
 	}
 }
 
-func TestResponsibleOptionByID(t *testing.T) {
+func TestResponsibleOptionMatch(t *testing.T) {
 	t.Parallel()
 
-	option, ok := responsibleOptionByID([]models.ResponsibleOption{
-		{ExternalID: "0000000005", Person: "Варикаш Андрей", Team: "[Барс] Сервисные инженеры"},
-	}, "0000000005")
-
-	if !ok {
-		t.Fatal("responsibleOptionByID() = false, want true")
+	options := []models.ResponsibleOption{
+		{ExternalID: "0000000005", TeamExternalID: "0000000006", Person: "Варикаш Андрей", Team: "[Барс] Специалисты 1-й линии"},
+		{ExternalID: "0000000005", TeamExternalID: "0000000004", Person: "Варикаш Андрей", Team: "[Барс] Сервисные инженеры"},
 	}
-	if option.Person != "Варикаш Андрей" {
-		t.Fatalf("option.Person = %q, want Варикаш Андрей", option.Person)
+
+	option, ok := responsibleOptionMatch(options, "0000000005", "0000000004")
+	if !ok {
+		t.Fatal("responsibleOptionMatch() = false, want true")
+	}
+	if option.TeamExternalID != "0000000004" {
+		t.Fatalf("option.TeamExternalID = %q, want 0000000004", option.TeamExternalID)
+	}
+
+	fallback, ok := responsibleOptionMatch(options, "0000000005", "")
+	if !ok || fallback.TeamExternalID != "0000000006" {
+		t.Fatalf("fallback match = %+v, ok=%v", fallback, ok)
 	}
 }
 
@@ -201,6 +208,23 @@ func TestBuildChangeResponsibleFormUsesIncNumberAndEmployeeId(t *testing.T) {
 	}
 	if form.Get("responsibleEmployeeId") != "0000000299" {
 		t.Fatalf("responsibleEmployeeId = %q, want 0000000299", form.Get("responsibleEmployeeId"))
+	}
+	if form.Get("sc_number") != "0000024299" {
+		t.Fatalf("sc_number = %q, want 0000024299", form.Get("sc_number"))
+	}
+}
+
+func TestBuildChangeResponsibleFormIncludesTeamIdWhenSet(t *testing.T) {
+	t.Parallel()
+
+	form := buildChangeResponsibleForm("0000023887", models.ChangeResponsibleRequest{
+		UserID:        "40367639",
+		ResponsibleID: "0000000005",
+		TeamID:        "0000000004",
+	})
+
+	if form.Get("responsibleTeamId") != "0000000004" {
+		t.Fatalf("responsibleTeamId = %q, want 0000000004", form.Get("responsibleTeamId"))
 	}
 }
 

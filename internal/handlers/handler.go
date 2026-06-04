@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Ckala62rus/maxapp-invest-itilium/internal/api"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/auth"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/middleware"
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
@@ -446,6 +447,17 @@ func (h *Handler) ChangeResponsible(writer http.ResponseWriter, request *http.Re
 	payload.UserID = middleware.UserIDFromContext(request.Context())
 	ticket, err := h.ticketService.ChangeResponsible(request.Context(), request.PathValue("number"), payload)
 	if err != nil {
+		var notConfirmed *api.ResponsibleChangeNotConfirmedError
+		if errors.As(err, &notConfirmed) {
+			msg := "ИТИЛИУМ не подтвердил смену ответственного"
+			if title := strings.TrimSpace(notConfirmed.ActualResponsibleTitle); title != "" {
+				msg = fmt.Sprintf("%s: в системе по-прежнему %s", msg, title)
+			} else {
+				msg += ". Повторите позже или обратитесь к администратору 1С"
+			}
+			h.writeError(writer, request, http.StatusBadGateway, errors.New(msg))
+			return
+		}
 		h.writeError(writer, request, http.StatusBadRequest, err)
 		return
 	}
