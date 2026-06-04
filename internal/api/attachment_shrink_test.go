@@ -20,13 +20,14 @@ func TestShrinkImageAttachmentForItilium_largeJPEG(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	require.NoError(t, jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}))
-	require.Greater(t, buf.Len(), itiliumAttachmentMaxBytes)
+	require.Greater(t, buf.Len(), itiliumAttachmentCompressMinBytes)
 
 	out := shrinkImageAttachmentForItilium(models.FileAttachment{
 		Filename:    "photo.jpg",
 		ContentType: "image/jpeg",
 		Data:        buf.Bytes(),
 	})
+	require.Less(t, len(out.Data), len(buf.Bytes()))
 	require.LessOrEqual(t, len(out.Data), itiliumAttachmentMaxBytes)
 	require.Equal(t, "image/jpeg", out.ContentType)
 }
