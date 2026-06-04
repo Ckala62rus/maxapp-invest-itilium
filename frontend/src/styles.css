@@ -559,6 +559,26 @@ select {
   width: 100%;
 }
 
+/* Иконка календаря в тёмной карточке — светлая; клик по полю открывает picker (Element Plus). */
+.status-postpone-date.el-date-editor .el-input__wrapper {
+  cursor: pointer;
+}
+
+.status-postpone-date .el-input__inner {
+  cursor: pointer;
+}
+
+.status-postpone-date .el-input__prefix-inner,
+.status-postpone-date .el-input__suffix-inner,
+.status-postpone-date .el-input__icon {
+  color: #eef5ff;
+}
+
+.status-postpone-date .el-input__prefix .el-icon,
+.status-postpone-date .el-input__suffix .el-icon {
+  color: #eef5ff;
+}
+
 .el-input__inner {
   color: #eef5ff;
 }

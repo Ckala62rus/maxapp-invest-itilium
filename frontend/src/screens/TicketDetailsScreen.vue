@@ -410,8 +410,9 @@ function updateStatusComment(event, statusForm) {
   }
 }
 
-function updateStatusDate(event, statusForm) {
-  statusForm.date = event.target.value
+// el-date-picker отдаёт YYYY-MM-DD; клик по полю открывает календарь (в т.ч. в Qt WebEngine).
+function setStatusPostponeDate(value, statusForm) {
+  statusForm.date = value || ''
   if (statusChangeError.value) {
     statusChangeError.value = validateStatusTransition(statusForm.state, statusForm)
   }
@@ -605,11 +606,17 @@ const statusDateHint = computed(() => {
           ></textarea>
         </label>
         <label>
-          Дата отложения
-          <input
+          отложить до
+          <el-date-picker
+            class="date-field status-postpone-date"
+            :model-value="statusForm.date"
             type="date"
-            :value="statusForm.date"
-            @input="updateStatusDate($event, statusForm)"
+            value-format="YYYY-MM-DD"
+            format="DD.MM.YYYY"
+            placeholder="Выберите дату"
+            :disabled="isChangingStatus"
+            :teleported="false"
+            @update:model-value="setStatusPostponeDate($event, statusForm)"
           />
           <small class="supporting-text">{{ statusDateHint }}</small>
         </label>
