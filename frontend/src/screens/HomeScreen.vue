@@ -38,8 +38,8 @@ function openScreen(screenId) {
         оставить комментарий и работать с заявками в своей ответственности.
       </p>
       <div class="hero-actions home-hero-actions">
-        <button class="primary-button wide" @click="openScreen('create')">Создать заявку</button>
-        <button class="secondary-button" @click="openScreen('myTickets')">Мои заявки</button>
+        <button type="button" class="primary-button wide" @click="openScreen('create')">Создать заявку</button>
+        <button type="button" class="secondary-button" @click="openScreen('myTickets')">Мои заявки</button>
       </div>
     </div>
 

@@ -18,6 +18,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  touch-action: manipulation;
   background:
     radial-gradient(circle at top, rgba(38, 97, 255, 0.25), transparent 28%),
     linear-gradient(180deg, #0b1527 0%, #08101c 100%);
@@ -33,6 +34,8 @@ select {
 button {
   cursor: pointer;
   border: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(127, 165, 255, 0.2);
 }
 
 #app {
@@ -188,6 +191,7 @@ button {
 .app-header {
   margin-bottom: 16px;
   position: relative;
+  z-index: 25;
 }
 
 .screen {
@@ -252,6 +256,8 @@ button {
 }
 
 .menu-toggle {
+  position: relative;
+  z-index: 26;
   min-width: 98px;
   min-height: 46px;
   display: inline-grid;
@@ -831,6 +837,10 @@ textarea {
 }
 
 /* SweetAlert2 theme: приводим confirm-окна к тёмному стилю mini app. */
+.swal2-container:not(.swal2-shown) {
+  pointer-events: none !important;
+}
+
 .swal2-container {
   padding: 16px;
   backdrop-filter: blur(10px);
@@ -952,6 +962,15 @@ textarea {
 
   .phone-stage--standalone {
     padding: 12px;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .ghost-button,
+  .menu-toggle,
+  .burger-menu-item,
+  .ticket-card {
+    min-height: 44px;
   }
 
   .phone-frame,
