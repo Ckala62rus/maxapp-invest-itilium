@@ -14,15 +14,20 @@
         var startEl = null
         var lastEl = null
         var lastAt = 0
-        var SUPPRESS_ATTR = 'data-maxapp-synthetic-tap'
+        var tapActivatedAt = 0
+        var tapActivatedEl = null
 
+        // Блокируем только отложенный «ghost click» браузера, не программный click() из touchend.
         document.addEventListener(
           'click',
           function (e) {
             var el = e.target && e.target.closest ? e.target.closest(SELECTOR) : null
-            if (el && el.getAttribute(SUPPRESS_ATTR)) {
+            if (!el || el !== tapActivatedEl) return
+            var dt = Date.now() - tapActivatedAt
+            if (dt > 25 && dt < 800) {
               e.preventDefault()
               e.stopImmediatePropagation()
+              tapActivatedEl = null
             }
           },
           true
@@ -34,11 +39,12 @@
           if (el === lastEl && now - lastAt < 400) return
           lastEl = el
           lastAt = now
-          el.setAttribute(SUPPRESS_ATTR, '1')
-          window.setTimeout(function () {
-            el.removeAttribute(SUPPRESS_ATTR)
-          }, 500)
+          tapActivatedAt = Date.now()
+          tapActivatedEl = el
           el.click()
+          window.setTimeout(function () {
+            if (tapActivatedEl === el) tapActivatedEl = null
+          }, 800)
         }
 
         function purgeOverlays() {

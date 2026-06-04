@@ -17,13 +17,14 @@ const INTERACTIVE_SELECTOR = [
 
 const TOUCH_MOVE_THRESHOLD_PX = 14
 const TAP_DEBOUNCE_MS = 400
-const SUPPRESS_ATTR = 'data-maxapp-synthetic-tap'
 
 let touchStartX = 0
 let touchStartY = 0
 let touchStartTarget = null
 let lastSyntheticTarget = null
 let lastSyntheticClickAt = 0
+let tapActivatedAt = 0
+let tapActivatedEl = null
 
 function findInteractiveTarget(node) {
   if (!(node instanceof Element)) {
@@ -45,13 +46,6 @@ function shouldInstallTapBridge() {
   return /android|iphone|ipad|mobile/i.test(navigator.userAgent || '')
 }
 
-function suppressGhostClick(target) {
-  target.setAttribute(SUPPRESS_ATTR, '1')
-  window.setTimeout(() => {
-    target.removeAttribute(SUPPRESS_ATTR)
-  }, 500)
-}
-
 function installGhostClickGuard() {
   if (window.__maxappGhostClickGuardInstalled) {
     return
@@ -61,9 +55,14 @@ function installGhostClickGuard() {
     'click',
     (event) => {
       const target = findInteractiveTarget(event.target)
-      if (target?.getAttribute(SUPPRESS_ATTR)) {
+      if (!target || target !== tapActivatedEl) {
+        return
+      }
+      const dt = Date.now() - tapActivatedAt
+      if (dt > 25 && dt < 800) {
         event.preventDefault()
         event.stopImmediatePropagation()
+        tapActivatedEl = null
       }
     },
     true
@@ -77,18 +76,25 @@ function activateTarget(target) {
   }
   lastSyntheticTarget = target
   lastSyntheticClickAt = now
-  suppressGhostClick(target)
+  tapActivatedAt = Date.now()
+  tapActivatedEl = target
   target.click()
+  window.setTimeout(() => {
+    if (tapActivatedEl === target) {
+      tapActivatedEl = null
+    }
+  }, 800)
 }
 
 /**
- * На Android WebView MAX синтетический click часто не доходит до Vue — дублируем tap через touchend/pointerup.
+ * На Android WebView MAX синтетический click часто не доходит до Vue — дублируем tap через touchend.
  */
 function installMobileTapBridge() {
   if (!shouldInstallTapBridge()) {
     return
   }
   window.__maxappTouchBridgeInstalled = true
+  installGhostClickGuard()
 
   document.addEventListener(
     'touchstart',
@@ -138,7 +144,6 @@ function installMobileTapBridge() {
  */
 export function ensureMobileInteractions() {
   purgeTouchBlockers()
-  installGhostClickGuard()
 
   const patchButtons = (root) => {
     if (!root?.querySelectorAll) {
