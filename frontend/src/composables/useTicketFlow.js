@@ -1,5 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import Swal from 'sweetalert2'
+import { withBusyModal } from '@/helpers/busyModal'
+import { validateStatusTransition } from '@/helpers/ticketWorkflow'
 
 import {
   actionTypes as ticketActionTypes,
@@ -319,7 +321,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     statusForm.value = {
       state: ticket?.availableStates?.[0] || '',
       comment: '',
-      date: ticket?.deadline || ''
+      date: ''
     }
 
   }, { immediate: true })
@@ -421,9 +423,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       }
 
     try {
-      const response = await (isMarketingFlow
-        ? store.dispatch(ticketActionTypes.createMarketingRequest, payload)
-        : store.dispatch(ticketActionTypes.createTicket, payload))
+      const response = await withBusyModal(
+        'Создаём заявку в ITILIUM…',
+        () => (isMarketingFlow
+          ? store.dispatch(ticketActionTypes.createMarketingRequest, payload)
+          : store.dispatch(ticketActionTypes.createTicket, payload))
+      )
 
       if (!response?.data?.success) {
         createSubmitError.value = 'Не удалось подтвердить создание заявки. Проверьте «Мои заявки».'
@@ -507,18 +512,24 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       return
     }
 
-    const response = await store.dispatch(ticketActionTypes.changeStatus, {
+    const validationError = validateStatusTransition(statusForm.value.state, statusForm.value)
+    if (validationError) {
+      return
+    }
+
+    const response = await withBusyModal('Меняем статус заявки…', () => store.dispatch(ticketActionTypes.changeStatus, {
       number: selectedTicket.value.number,
       data: {
         state: statusForm.value.state,
         comment: statusForm.value.comment,
         date: statusForm.value.date
       }
-    })
+    }))
 
     if (response?.data?.success) {
       submitBanner.value = 'Статус заявки обновлен.'
     }
+    return response
   }
 
   async function assignResponsible(responsibleId) {
@@ -548,12 +559,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
     selectedResponsibleId.value = responsibleId
 
-    const response = await store.dispatch(ticketActionTypes.changeResponsible, {
+    const response = await withBusyModal('Назначаем ответственного…', () => store.dispatch(ticketActionTypes.changeResponsible, {
       number: selectedTicket.value.number,
       data: {
         responsibleId
       }
-    })
+    }))
 
     if (response?.data?.success) {
       submitBanner.value = 'Ответственный по заявке обновлен.'

@@ -2,6 +2,7 @@
 // Карточка: таймлайн, смена статуса, ответственный, комментарии.
 import { computed, ref, watch } from 'vue'
 import Swal from 'sweetalert2'
+import { validateStatusTransition } from '@/helpers/ticketWorkflow'
 
 const props = defineProps({
   selectedTicket: {
@@ -290,6 +291,12 @@ function submitComment() {
 }
 
 function submitStatusChange() {
+  const validationError = validateStatusTransition(props.statusForm.state, props.statusForm)
+  if (validationError) {
+    statusChangeError.value = validationError
+    return
+  }
+  statusChangeError.value = ''
   emit('submit-status-change')
 }
 
@@ -307,8 +314,9 @@ function closeStatusSelection() {
 
 async function chooseStatus(status, statusForm) {
   statusForm.state = status
-  if (isWaitingForResponseStatus(status) && !String(statusForm.comment || '').trim()) {
-    statusChangeError.value = 'Для статуса «В ожидании ответа» комментарий обязателен.'
+  const validationError = validateStatusTransition(status, statusForm)
+  if (validationError) {
+    statusChangeError.value = validationError
     return
   }
   statusChangeError.value = ''
@@ -397,14 +405,25 @@ function submitTicketRating() {
 
 function updateStatusComment(event, statusForm) {
   statusForm.comment = event.target.value
-  if (statusChangeError.value && String(statusForm.comment || '').trim()) {
-    statusChangeError.value = ''
+  if (statusChangeError.value) {
+    statusChangeError.value = validateStatusTransition(statusForm.state, statusForm)
   }
 }
 
-function isWaitingForResponseStatus(status) {
-  return String(status || '').toLowerCase().includes('в ожидании ответа')
+function updateStatusDate(event, statusForm) {
+  statusForm.date = event.target.value
+  if (statusChangeError.value) {
+    statusChangeError.value = validateStatusTransition(statusForm.state, statusForm)
+  }
 }
+
+const statusDateHint = computed(() => {
+  const state = String(props.statusForm?.state || '')
+  if (String(state).toLowerCase().includes('отлож')) {
+    return 'Обязательно для статуса «Отложено».'
+  }
+  return 'Заполните при переводе в «Отложено».'
+})
 </script>
 
 <template>
@@ -581,9 +600,18 @@ function isWaitingForResponseStatus(status) {
           <textarea
             :value="statusForm.comment"
             rows="3"
-            placeholder="Комментарий обязателен для статуса «В ожидании ответа»"
+            placeholder="Обязателен для «В ожидании ответа» и «Отложено»"
             @input="updateStatusComment($event, statusForm)"
           ></textarea>
+        </label>
+        <label>
+          Дата отложения
+          <input
+            type="date"
+            :value="statusForm.date"
+            @input="updateStatusDate($event, statusForm)"
+          />
+          <small class="supporting-text">{{ statusDateHint }}</small>
         </label>
       </div>
       <p v-if="statusChangeError" class="status-pill rose">{{ statusChangeError }}</p>

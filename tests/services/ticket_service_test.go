@@ -109,6 +109,32 @@ func TestTicketServiceCreateTicketValidatesInput(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestTicketServiceChangeStatusPostponedRequiresCommentAndDate(t *testing.T) {
+	service := services.NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
+
+	_, err := service.ChangeStatus(context.Background(), "SC-1", models.ChangeStatusRequest{
+		UserID: "1",
+		State:  "05_Отложено",
+	})
+	require.Error(t, err)
+
+	_, err = service.ChangeStatus(context.Background(), "SC-1", models.ChangeStatusRequest{
+		UserID:  "1",
+		State:   "05_Отложено",
+		Comment: "перенос",
+	})
+	require.Error(t, err)
+
+	ticket, err := service.ChangeStatus(context.Background(), "SC-1", models.ChangeStatusRequest{
+		UserID:  "1",
+		State:   "05_Отложено",
+		Comment: "перенос",
+		Date:    "2026-07-01",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "05_Отложено", ticket.State)
+}
+
 func TestTicketServiceAddCommentRequiresMessageOrAttachment(t *testing.T) {
 	// Комментарий без текста и без вложений не имеет смысла для 1С,
 	// поэтому сервис должен вернуть ошибку до вызова ITILIUM.

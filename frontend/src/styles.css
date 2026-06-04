@@ -892,6 +892,19 @@ textarea {
   background: rgba(37, 92, 255, 0.16);
 }
 
+.swal2-popup.maxapp-swal-popup.maxapp-swal-busy .swal2-title {
+  margin-bottom: 16px;
+}
+
+.swal2-popup.maxapp-swal-popup.maxapp-swal-busy .swal2-html-container {
+  margin: 0;
+  padding: 0;
+}
+
+.swal-busy-spinner {
+  margin: 8px auto 4px;
+}
+
 .swal2-popup.maxapp-swal-popup .swal2-styled:focus {
   box-shadow: 0 0 0 3px rgba(127, 165, 255, 0.35);
 }
