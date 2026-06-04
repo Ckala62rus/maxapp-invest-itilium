@@ -60,6 +60,7 @@
 - Кнопки статуса («04_В работе» и т.д.) казались мёртвыми: `MutationObserver` в `ensureMobileInteractions.js` вызывал `purgeTouchBlockers()` при **добавлении** `.swal2-container` и сразу скрывал confirm. Fix: убрать purge на add; `purgeTouchBlockers` пропускает активный `Swal.isVisible()`; `confirmDialog`/`busyModal` в `didOpen` выставляют `swal2-shown` и `display:flex`, в `didClose` — очистка.
 - **1С (2026-06):** `create_sc_Dax` — те же поля, что `create_sc` (`id`, `shortDescription`, `description`, `files`); UI «Заявка в DAX» → `/create_sc_Dax`. `change_responsible_sc`: `id`, `inc_number`, `responsibleEmployeeId` (сотрудник) и/или `responsibleTeamId` (рабочая группа).
 - `change_responsible_sc` на тестовом контуре часто даёт **204**, но `find_sc` может так и остаться на старом исполнителе. Backend шлёт канонические поля + legacy `telegram`/`sc_number`; опрос `find_sc` до ~10 с; при неподтверждении — **502**; UI передаёт `teamId` (`responsibleTeamId`) с `responsibleId`.
+- DAX/IT create with photo failed with UI **413** and no `POST /api/v1/tickets` in backend logs: nginx default `client_max_body_size` is 1m. Fix: `client_max_body_size 40m` on `/api/` in all nginx configs; frontend maps 413 to a Russian hint (15 MiB per file).
 
 ## Important Decisions
 

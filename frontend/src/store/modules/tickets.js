@@ -25,6 +25,9 @@ function normalizeTicketError(error) {
     return 'Создание заявки в ITILIUM может занять до минуты. Если появилась ошибка — откройте «Мои заявки» и обновите список: заявка могла уже создаться.'
   }
 
+  if (statusCode === 413 || /status code 413/i.test(rawMessage)) {
+    return 'Вложение слишком большое. Один файл — до 15 МБ, не более 20 файлов за раз. Сожмите фото или отправьте без вложения.'
+  }
   if (statusCode === 404 || /status 404/i.test(rawMessage)) {
     return 'Заявка не найдена в ITILIUM.'
   }
