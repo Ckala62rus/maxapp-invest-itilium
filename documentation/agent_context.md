@@ -1,8 +1,12 @@
 # Working Context
 
+## Repo conventions
+
+- **`tools/` не коммитить** — локальные утилиты (max-notify, Postman-коллекции и т.п.), остаются только на машине разработчика.
+
 ## Current State
 
-- Dev backend runs through a single `backend-dev` service in `docker-compose.dev.yml`; it starts Air with `.air.debug.toml` (Delve on container `:40000`, published to host `localhost:40100`), while `.air.toml` remains an optional non-Delve fallback for manual runs; Air polling is enabled for Docker Desktop bind mounts.
+- Dev frontend in Docker: API proxy `VITE_API_PROXY_TARGET=http://backend-dev:3000`. **Daily dev on Windows: `http://localhost:5173`** (direct Vite, stable HMR). **`http://localhost:8080`** (nginx) may spontaneous-reload on Windows due to HMR WebSocket through proxy; optional `VITE_DISABLE_HMR=true` for stable 8080.
 - Docker containers are currently started by the user and ready for the next external integration checks.
 - The ITILIUM dev target is built from `ITILIUM_HOST` in `.env` through `docker-compose.dev.yml`.
 - TLS verification is temporarily disabled with `itilium.insecure_skip_verify: true` because the current test host is addressed by IP.
