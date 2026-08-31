@@ -17,8 +17,11 @@ import TicketDetailsScreen from '@/screens/TicketDetailsScreen.vue'
 import { useAuthFlow } from '@/composables/useAuthFlow'
 import { useTicketFlow } from '@/composables/useTicketFlow'
 import { purgeTouchBlockers } from '@/helpers/purgeTouchBlockers'
+import { getMaxStartParam, parseTicketNumberFromStartParam } from '@/api/maxBridge'
+import { getSessionItem, setSessionItem } from '@/helpers/persistenceStorage'
 
 const store = useStore()
+const ACTIVE_SCREEN_KEY = 'maxapp.activeScreen'
 
 // Screen ids are used by the internal app navigator after onboarding is complete.
 const baseScreenOptions = [
@@ -33,7 +36,19 @@ const baseScreenOptions = [
 ]
 
 // The active screen simulates page transitions for the stakeholder demo.
-const activeScreen = ref('home')
+function readStoredActiveScreen() {
+  const stored = getSessionItem(ACTIVE_SCREEN_KEY)
+  if (stored && baseScreenOptions.some((screen) => screen.id === stored)) {
+    return stored
+  }
+  return 'home'
+}
+
+const activeScreen = ref(readStoredActiveScreen())
+
+watch(activeScreen, (screenId) => {
+  setSessionItem(ACTIVE_SCREEN_KEY, screenId)
+})
 
 // The submission banner imitates the visual result of a completed action.
 const submitBanner = ref('')
@@ -148,9 +163,40 @@ const {
 
 onMounted(() => {
   purgeTouchBlockers()
-  bootstrapAuth().then((response) => {
+  // Номер из ?startapp= читаем до bootstrap: после auth bridge/query всё ещё доступны, но так проще отладить.
+  const startupTicket = parseTicketNumberFromStartParam(getMaxStartParam())
+  if (startupTicket && import.meta.env.DEV) {
+    console.info('[nav] startup deep link ticket', { ticketNumber: startupTicket })
+  }
+
+  bootstrapAuth().then(async (response) => {
     const user = response?.data?.user || null
-    if (response?.data?.stage === 'ready' && user?.employeeFound) {
+    const stage = response?.data?.stage
+    const bootstrapOk = Boolean(response?.data?.success)
+    const ticketNumber =
+      startupTicket || parseTicketNumberFromStartParam(getMaxStartParam())
+
+    // Deep link: после успешного auth открываем карточку (в DEV — даже если employeeFound ещё не подтянулся).
+    if (
+      ticketNumber &&
+      bootstrapOk &&
+      user &&
+      (user.employeeFound || import.meta.env.DEV)
+    ) {
+      await openTicketDetails(ticketNumber, 'search')
+      return
+    }
+
+    if (ticketNumber && import.meta.env.DEV) {
+      console.warn('[nav] deep link skipped', {
+        ticketNumber,
+        bootstrapOk,
+        stage,
+        employeeFound: user?.employeeFound ?? null
+      })
+    }
+
+    if (stage === 'ready' && user?.employeeFound) {
       loadTicketLists()
     }
   })
@@ -159,6 +205,8 @@ onMounted(() => {
 // This helper switches screens from the top navigation and action buttons.
 function openScreen(screenId) {
   activeScreen.value = screenId
+  // Сразу пишем в sessionStorage: при HMR/full reload @vite/client экран восстанавливается до срабатывания watch.
+  setSessionItem(ACTIVE_SCREEN_KEY, screenId)
   submitBanner.value = ''
   isNavigationOpen.value = false
 }

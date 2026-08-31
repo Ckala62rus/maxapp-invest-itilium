@@ -7,11 +7,16 @@ export function purgeTouchBlockers() {
   if (typeof Swal.isVisible === 'function' && Swal.isVisible()) {
     return
   }
-  document.body.classList.remove('swal2-shown', 'swal2-height-auto', 'swal2-no-backdrop')
-  document.documentElement.classList.remove('swal2-shown')
+  const body = document.body
+  const root = document.documentElement
+  if (!body || !root) {
+    return
+  }
+  body.classList.remove('swal2-shown', 'swal2-height-auto', 'swal2-no-backdrop')
+  root.classList.remove('swal2-shown')
 
   document.querySelectorAll('.swal2-container').forEach((container) => {
-    if (document.body.classList.contains('swal2-shown')) {
+    if (body.classList.contains('swal2-shown')) {
       return
     }
     container.style.display = 'none'

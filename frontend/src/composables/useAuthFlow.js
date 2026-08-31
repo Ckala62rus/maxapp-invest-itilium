@@ -6,6 +6,8 @@ import {
   getterTypes as authGetterTypes
 } from '@/store/modules/auth'
 
+let authBootstrapPromise = null
+
 /**
  * Композабл авторизации и онбординга: MAX bridge → Vuex bootstrap/me → выбор экрана (профиль / регистрация / home).
  * App.vue только переключает экраны; вся логика ветвлений по registration* здесь.
@@ -113,23 +115,27 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
   }, { immediate: true })
 
   async function bootstrapAuth() {
-    configureMaxWebApp()
-
-    const launchData = getMaxBridgeLaunchData()
-    maxBridgeState.value = launchData
-    const bootstrapResponse = await store.dispatch(authActionTypes.bootstrap, {
-      initData: launchData.initData
-    })
-
-    if (!bootstrapResponse?.data?.success) {
-      // Нет валидной сессии — остаёмся на профиле с сообщением об ошибке.
-      activeScreen.value = 'profile'
-      return bootstrapResponse
+    if (authBootstrapPromise) {
+      return authBootstrapPromise
     }
 
-    // После успешного validate загружаем профиль и по флагам решаем, куда вести пользователя.
-    return store.dispatch(authActionTypes.me)
-      .then((response) => {
+    authBootstrapPromise = (async () => {
+      configureMaxWebApp()
+
+      const launchData = getMaxBridgeLaunchData()
+      maxBridgeState.value = launchData
+      const bootstrapResponse = await store.dispatch(authActionTypes.bootstrap, {
+        initData: launchData.initData
+      })
+
+      if (!bootstrapResponse?.data?.success) {
+        // Нет валидной сессии — остаёмся на профиле с сообщением об ошибке.
+        activeScreen.value = 'profile'
+        return bootstrapResponse
+      }
+
+      // После успешного validate загружаем профиль и по флагам решаем, куда вести пользователя.
+      return store.dispatch(authActionTypes.me).then((response) => {
         const user = response?.data?.data || null
         if (!user) {
           return {
@@ -164,7 +170,7 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
           }
         }
 
-        activeScreen.value = 'home'
+        // Маршрут после bootstrap задаёт только App.vue; здесь экран не трогаем.
         return {
           data: {
             success: true,
@@ -173,6 +179,9 @@ export function useAuthFlow({ store, activeScreen, submitBanner }) {
           }
         }
       })
+    })()
+
+    return authBootstrapPromise
   }
 
   // Registration goes through the shared auth module so the UI already uses

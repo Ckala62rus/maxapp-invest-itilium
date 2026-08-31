@@ -438,6 +438,125 @@ sudo docker compose --env-file .env logs -f backend
 sudo docker compose --env-file .env logs -f web
 ```
 
+### 13.1. Проверка кнопки «Открыть заявку» (deep link) на production
+
+Сценарий: после деплоя кода с поддержкой `start_param` отправить себе личное сообщение из Postman с кнопкой `open_app` и убедиться, что mini app открывается сразу на карточке заявки.
+
+#### Шаг 1. Выгрузить обновлённый код на сервер
+
+```bash
+cd /opt/docker-shared/maxapp-invest-itilium   # или ваш каталог на сервере
+sudo git pull --ff-only
+sudo docker compose --env-file .env up --build -d web backend
+sudo docker compose --env-file .env ps
+```
+
+Нужны контейнеры **`web`** (frontend + nginx) и **`backend`**. Без пересборки `web` на prod останется старый JS без deep link.
+
+Проверка, что prod отвечает:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}" https://your.domain.example/
+curl -sS -o /dev/null -w "%{http_code}" https://your.domain.example/healthz
+```
+
+Оба запроса — **200** (или `healthz` по вашему маршруту).
+
+#### Шаг 2. URL mini app в настройках MAX-бота
+
+В кабинете MAX у бота URL mini app = **тот же HTTPS**, что и production, например:
+
+```text
+https://your.domain.example/
+```
+
+Если URL указывает на старый стенд, localhost или tuna — кнопка `open_app` откроет **не тот** frontend.
+
+#### Шаг 3. Postman — параметры
+
+Коллекция: `tools/max-notify/max-notify.postman_collection.json`.
+
+| Переменная | Значение |
+|------------|----------|
+| `maxBotToken` | токен бота (как в `.env` на сервере) |
+| `maxNotifyUserId` | **ваш** MAX user id (получатель лички) |
+| `maxBotContactId` | `user_id` бота из **GET /me** |
+| `ticketNumber` | номер заявки, напр. `0000024311` |
+
+1. **GET /me** — скопируйте `user_id` → `maxBotContactId`, `username` → `maxBotWebApp` (если нужен).
+2. Убедитесь, что вы **хотя бы раз** открывали чат с ботом в MAX (иначе личка не доставится).
+
+#### Шаг 4. Отправить сообщение с кнопкой
+
+Запрос **POST /messages — open_app (contact_id)** (надёжнее, чем `web_app` с чужим username).
+
+Тело (подставьте свои значения):
+
+```json
+{
+  "text": "Тест: открыть заявку 0000024311",
+  "notify": true,
+  "attachments": [
+    {
+      "type": "inline_keyboard",
+      "payload": {
+        "buttons": [
+          [
+            {
+              "type": "open_app",
+              "text": "Открыть 0000024311",
+              "contact_id": 270966433,
+              "payload": "ticket_0000024311"
+            }
+          ]
+        ]
+      }
+    }
+  ]
+}
+```
+
+- **`contact_id`** — из GET /me (не из примеров README).
+- **`payload`** — строго `ticket_{номер}`; двоеточие MAX не принимает.
+- Заявка должна **существовать в ITILIUM** и быть доступна **вашему** пользователю.
+
+Успех Postman: **HTTP 200**, в теле объект `message`.
+
+Альтернатива с сервера:
+
+```bash
+cd tools/max-notify
+python notify.py --template assigned --ticket 0000024311
+```
+
+#### Шаг 5. Нажать кнопку в MAX
+
+1. Откройте **MAX** (телефон или desktop).
+2. Личка с ботом → новое сообщение → **«Открыть …»**.
+3. Должно открыться **mini app на production** (не браузер с localhost).
+4. После «Проверяем MAX-сессию…» — экран **«Карточка заявки»** с номером `0000024311`, не главная.
+
+#### Шаг 6. Что смотреть, если что-то не так
+
+| Симптом | Вероятная причина |
+|---------|-------------------|
+| Postman **404** `Link not found ... invest_it_bot` | Неверный `web_app`; используйте **contact_id** из GET /me |
+| Сообщение не приходит | Не открывали чат с ботом; неверный `maxNotifyUserId` |
+| Открылась **главная**, не заявка | На prod старый frontend; deep link не задеployен |
+| Открылась главная, auth OK | Старый кэш WebView — закройте mini app и откройте снова с кнопки |
+| Карточка с ошибкой | Неверный номер или заявка недоступна вашему user id в 1С |
+| Mini app не открывается | URL mini app в настройках бота не совпадает с prod |
+
+Логи backend при успехе (фильтр по времени нажатия кнопки):
+
+```text
+POST /api/v1/auth/max/validate
+GET  /api/v1/users/me
+GET  /api/v1/tickets/0000024311
+```
+
+Локальная отладка без MAX: `documentation/local_development.md` → раздел «Проверка deep link».
+
 ## 14. Замена сертификатов
 
 Когда администратор выдаст новые файлы сертификата, замените `fullchain.pem` и `privkey.pem` в `/opt/docker-shared/maxapp-invest-itilium/ssl/`.

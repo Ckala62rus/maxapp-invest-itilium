@@ -10,3 +10,12 @@ export function setItem(key, value) {
 export function removeItem(key) {
   window.localStorage.removeItem(key)
 }
+
+/** sessionStorage для экрана навигации (переживает Vite HMR / пересборку компонента). */
+export function getSessionItem(key) {
+  return window.sessionStorage.getItem(key)
+}
+
+export function setSessionItem(key, value) {
+  window.sessionStorage.setItem(key, value)
+}

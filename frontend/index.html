@@ -48,10 +48,13 @@
         }
 
         function purgeOverlays() {
-          document.body.classList.remove('swal2-shown', 'swal2-height-auto')
-          document.documentElement.classList.remove('swal2-shown')
+          var body = document.body
+          var root = document.documentElement
+          if (!body || !root) return
+          body.classList.remove('swal2-shown', 'swal2-height-auto')
+          root.classList.remove('swal2-shown')
           document.querySelectorAll('.swal2-container').forEach(function (node) {
-            if (document.body.classList.contains('swal2-shown')) return
+            if (body.classList.contains('swal2-shown')) return
             node.style.display = 'none'
             node.style.visibility = 'hidden'
             node.style.pointerEvents = 'none'
@@ -86,21 +89,12 @@
           { capture: true, passive: false }
         )
 
-        function maxBoot() {
-          purgeOverlays()
-          var w = window.WebApp
-          if (!w) return
-          try {
-            if (typeof w.ready === 'function') w.ready()
-          } catch (err) {}
-          try {
-            if (typeof w.disableVerticalSwipes === 'function') w.disableVerticalSwipes()
-          } catch (err) {}
-        }
-
         window.__maxappTouchBridgeInstalled = true
-        maxBoot()
-        document.addEventListener('DOMContentLoaded', maxBoot)
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', purgeOverlays)
+        } else {
+          purgeOverlays()
+        }
         window.addEventListener('pageshow', purgeOverlays)
       })()
     </script>
