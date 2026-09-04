@@ -45,7 +45,8 @@ services:
     image: node:20.18-alpine
     container_name: maxapp-itilium-frontend-dev
     working_dir: /app
-    command: sh -c "npm install && npm run dev"
+    # node_modules уже в томе frontend_node_modules — не зависаем на npm install при каждом recreate.
+    command: sh -c "npm run dev"
     environment:
       # Vite внутри контейнера проксирует /api на сервис backend-dev.
       VITE_API_PROXY_TARGET: http://backend-dev:3000

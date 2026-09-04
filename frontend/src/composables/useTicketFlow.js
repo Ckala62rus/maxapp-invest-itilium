@@ -315,12 +315,18 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     const source = storeTicketComments.value.length
       ? storeTicketComments.value
       : (selectedTicket.value?.timeline || [])
+    const myName = normalizePersonName(currentUser.value?.fullName || '')
 
-    return source.map((item) => ({
-      actor: item.author || item.actor || 'Система',
-      text: item.message || item.text || '',
-      time: formatTimelineTime(item.createdAt || item.time || '')
-    }))
+    return source.map((item) => {
+      const actor = item.author || item.actor || 'Система'
+      return {
+        actor,
+        text: item.message || item.text || '',
+        time: formatTimelineTime(item.createdAt || item.time || ''),
+        // Свои сообщения — справа в «чате», чужие — слева.
+        isMine: Boolean(myName) && normalizePersonName(actor) === myName
+      }
+    })
   })
 
   const commentsPageCount = computed(() => Math.ceil(selectedTicketTimeline.value.length / commentsPageSize) || 0)
@@ -814,6 +820,13 @@ function resolveTicketTone(state) {
     return 'blue'
   }
   return 'info'
+}
+
+function normalizePersonName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
 }
 
 function formatTimelineTime(value) {

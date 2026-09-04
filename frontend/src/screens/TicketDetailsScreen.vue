@@ -575,15 +575,20 @@ const statusDateHint = computed(() => {
           По этой заявке пока нет комментариев.
         </p>
 
-        <div v-else class="timeline">
+        <div v-else class="comment-thread">
           <article
             v-for="(item, index) in paginatedTicketComments"
             :key="`${item.time}-${index}`"
-            class="timeline-item"
+            class="comment-item"
+            :class="item.isMine ? 'comment-item--mine' : 'comment-item--other'"
           >
-            <span>{{ item.time || '—' }}</span>
-            <strong>{{ item.actor || 'Система' }}</strong>
-            <p>{{ item.text || '—' }}</p>
+            <div class="comment-meta">
+              <strong>{{ item.isMine ? 'Вы' : (item.actor || 'Система') }}</strong>
+              <span>{{ item.time || '—' }}</span>
+            </div>
+            <div class="comment-bubble">
+              <p>{{ item.text || '—' }}</p>
+            </div>
           </article>
         </div>
 
