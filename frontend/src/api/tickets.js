@@ -67,6 +67,11 @@ const getTicketDetails = (number) => {
   return axios.get(urls.ticketDetails(number))
 }
 
+/** Лента комментариев заявки (ITILIUM list_comment через backend). */
+const listTicketComments = (number) => {
+  return axios.get(urls.ticketComments(number))
+}
+
 /**
  * Комментарий к заявке; ответ — обновлённая карточка.
  * Без файлов — JSON; с файлами — multipart (`payload` + части `attachments`), как при создании заявки.
@@ -159,6 +164,7 @@ export default {
   listResponsibleTickets,
   searchTicket,
   getTicketDetails,
+  listTicketComments,
   addComment,
   changeStatus,
   listResponsibleOptions,

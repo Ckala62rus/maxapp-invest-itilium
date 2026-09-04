@@ -33,6 +33,22 @@ const props = defineProps({
     type: Array,
     required: true
   },
+  paginatedTicketComments: {
+    type: Array,
+    default: () => []
+  },
+  commentsPageCount: {
+    type: Number,
+    default: 0
+  },
+  currentCommentsPage: {
+    type: Number,
+    default: 1
+  },
+  isLoadingTicketComments: {
+    type: Boolean,
+    default: false
+  },
   commentDraft: {
     type: String,
     required: true
@@ -100,7 +116,8 @@ const emit = defineEmits([
   'submit-status-change',
   'assign-responsible',
   'request-responsible-options',
-  'submit-ticket-rating'
+  'submit-ticket-rating',
+  'set-comments-page'
 ])
 
 const activePanel = ref('')
@@ -284,6 +301,35 @@ function openScreen(screenId) {
   emit('open-screen', screenId)
 }
 
+/** Куда возвращаемся с карточки: список «мои» / «в ответственности» / поиск. */
+const detailsBackScreen = computed(() => {
+  if (props.detailsOrigin === 'myTickets') {
+    return 'myTickets'
+  }
+  if (props.detailsOrigin === 'responsible') {
+    return 'responsible'
+  }
+  return 'search'
+})
+
+const detailsBackLabel = computed(() => {
+  if (detailsBackScreen.value === 'myTickets') {
+    return 'К моим заявкам'
+  }
+  if (detailsBackScreen.value === 'responsible') {
+    return 'К заявкам в ответственности'
+  }
+  return 'К поиску'
+})
+
+function goBackToOrigin() {
+  openScreen(detailsBackScreen.value)
+}
+
+function setCommentsPage(page) {
+  emit('set-comments-page', page)
+}
+
 function updateCommentDraft(event) {
   emit('update:comment-draft', event.target.value)
 }
@@ -448,7 +494,12 @@ const statusDateHint = computed(() => {
         <p class="eyebrow">Карточка заявки</p>
         <h2>{{ selectedTicket?.number || searchQuery }}</h2>
       </div>
-      <span class="status-pill" :class="detailStatusTone">{{ selectedTicket?.state || 'info' }}</span>
+      <div class="section-header-actions">
+        <button type="button" class="ghost-button details-back-button" @click="goBackToOrigin">
+          ← {{ detailsBackLabel }}
+        </button>
+        <span class="status-pill" :class="detailStatusTone">{{ selectedTicket?.state || 'info' }}</span>
+      </div>
     </div>
 
     <div
@@ -509,6 +560,47 @@ const statusDateHint = computed(() => {
         <p>{{ selectedTicket.description }}</p>
       </div>
 
+      <div class="content-card compact ticket-comments-card">
+        <div class="ticket-comments-header">
+          <span>Комментарии</span>
+          <strong v-if="!isLoadingTicketComments">{{ selectedTicketTimeline.length }}</strong>
+        </div>
+
+        <div v-if="isLoadingTicketComments" class="ticket-comments-loading">
+          <div class="spinner"></div>
+          <p>Загружаем комментарии…</p>
+        </div>
+
+        <p v-else-if="!paginatedTicketComments.length" class="ticket-comments-empty">
+          По этой заявке пока нет комментариев.
+        </p>
+
+        <div v-else class="timeline">
+          <article
+            v-for="(item, index) in paginatedTicketComments"
+            :key="`${item.time}-${index}`"
+            class="timeline-item"
+          >
+            <span>{{ item.time || '—' }}</span>
+            <strong>{{ item.actor || 'Система' }}</strong>
+            <p>{{ item.text || '—' }}</p>
+          </article>
+        </div>
+
+        <div v-if="commentsPageCount > 1" class="pagination">
+          <button
+            v-for="page in commentsPageCount"
+            :key="page"
+            type="button"
+            class="page-button"
+            :class="{ active: page === currentCommentsPage }"
+            @click="setCommentsPage(page)"
+          >
+            {{ page }}
+          </button>
+        </div>
+      </div>
+
       <div v-if="isActionGridVisible" class="action-grid">
         <button type="button" class="secondary-button" :disabled="isSubmittingComment" @click="openCommentPanel">Добавить комментарий</button>
         <button
@@ -542,8 +634,8 @@ const statusDateHint = computed(() => {
       <h3>Заявку не удалось открыть</h3>
       <p>{{ ticketErrors[0] }}</p>
       <div class="hero-actions">
-        <button type="button" class="primary-button" @click="openScreen(detailsOrigin === 'myTickets' ? 'myTickets' : 'search')">
-          {{ detailsOrigin === 'myTickets' ? 'Вернуться к моим заявкам' : 'Вернуться к поиску' }}
+        <button type="button" class="primary-button" @click="goBackToOrigin">
+          {{ detailsBackLabel }}
         </button>
       </div>
     </article>

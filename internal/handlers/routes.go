@@ -49,6 +49,7 @@ func (h *Handler) Routes() http.Handler {
 			router.Post("/tickets/search", h.SearchTicket)
 			router.Post("/tickets", h.CreateTicket)
 			router.Get("/tickets/{number}", h.GetTicket)
+			router.Get("/tickets/{number}/comments", h.ListComments)
 			router.Post("/tickets/{number}/comments", h.AddComment)
 			router.Post("/tickets/{number}/status", h.ChangeStatus)
 			router.Get("/tickets/{number}/responsibles", h.ListResponsibleOptions)

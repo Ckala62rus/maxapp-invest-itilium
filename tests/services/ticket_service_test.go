@@ -43,6 +43,10 @@ func (s *itiliumClientStub) GetTicket(_ context.Context, _ string, number string
 	return models.TicketDetail{Number: number, Title: "demo"}, nil
 }
 
+func (s *itiliumClientStub) ListComments(_ context.Context, _ string, _ string) ([]models.CommentEntry, error) {
+	return []models.CommentEntry{{Author: "Тест", Message: "комментарий", CreatedAt: "01.01.2026 12:00:00"}}, nil
+}
+
 func (s *itiliumClientStub) CreateTicket(_ context.Context, request models.CreateTicketRequest) (models.TicketDetail, error) {
 	return models.TicketDetail{Number: "SC-NEW", Title: request.Title}, nil
 }
@@ -143,4 +147,14 @@ func TestTicketServiceAddCommentRequiresMessageOrAttachment(t *testing.T) {
 	_, err := service.AddComment(context.Background(), "SC-1", models.AddCommentRequest{})
 
 	require.Error(t, err)
+}
+
+func TestTicketServiceListComments(t *testing.T) {
+	service := services.NewTicketService(&itiliumClientStub{}, repository.NewRedisCache(nil))
+
+	comments, err := service.ListComments(context.Background(), "40367639", "0000019683")
+
+	require.NoError(t, err)
+	require.Len(t, comments, 1)
+	require.Equal(t, "комментарий", comments[0].Message)
 }

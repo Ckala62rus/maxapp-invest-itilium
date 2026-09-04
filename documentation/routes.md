@@ -92,6 +92,16 @@ Every request passes through the same middleware chain defined in `internal/hand
   - if cache miss, calls the ITILIUM client
   - returns the full ticket card
 
+### `GET /api/v1/tickets/{number}/comments`
+- Handler: `Handler.ListComments`
+- Service: `TicketService.ListComments`
+- ITILIUM: `GET /list_comment` with query `id`, `sc_number`
+- Flow:
+  - reads ticket number and identity user id
+  - calls ITILIUM `list_comment`
+  - maps `sender`/`comment`/`date_sending` → `author`/`message`/`createdAt`
+  - returns comment list for the ticket card
+
 ### `POST /api/v1/tickets/{number}/comments`
 - Handler: `Handler.AddComment`
 - Service: `TicketService.AddComment`

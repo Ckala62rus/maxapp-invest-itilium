@@ -327,6 +327,18 @@ func (h *Handler) GetTicket(writer http.ResponseWriter, request *http.Request) {
 	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: ticket})
 }
 
+// ListComments returns comments for the selected ticket.
+func (h *Handler) ListComments(writer http.ResponseWriter, request *http.Request) {
+	number := request.PathValue("number")
+	comments, err := h.ticketService.ListComments(request.Context(), middleware.UserIDFromContext(request.Context()), number)
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: comments})
+}
+
 // AddComment appends a comment to the selected ticket.
 func (h *Handler) AddComment(writer http.ResponseWriter, request *http.Request) {
 	var payload models.AddCommentRequest

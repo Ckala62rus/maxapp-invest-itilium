@@ -79,10 +79,12 @@ const state = {
   myTickets: [],
   responsibleTickets: [],
   selectedTicket: null,
+  ticketComments: [],
   responsibleOptions: [],
   isLoadingMyTickets: false,
   isLoadingResponsibleTickets: false,
   isLoadingTicketDetails: false,
+  isLoadingTicketComments: false,
   isLoadingResponsibleOptions: false,
   isCreatingTicket: false,
   isSubmittingComment: false,
@@ -113,6 +115,9 @@ export const mutationTypes = {
   loadTicketDetailsStart: '[tickets] loadTicketDetailsStart',
   loadTicketDetailsSuccess: '[tickets] loadTicketDetailsSuccess',
   loadTicketDetailsFail: '[tickets] loadTicketDetailsFail',
+  loadTicketCommentsStart: '[tickets] loadTicketCommentsStart',
+  loadTicketCommentsSuccess: '[tickets] loadTicketCommentsSuccess',
+  loadTicketCommentsFail: '[tickets] loadTicketCommentsFail',
   loadResponsibleOptionsStart: '[tickets] loadResponsibleOptionsStart',
   loadResponsibleOptionsSuccess: '[tickets] loadResponsibleOptionsSuccess',
   loadResponsibleOptionsFail: '[tickets] loadResponsibleOptionsFail',
@@ -145,6 +150,7 @@ export const actionTypes = {
   loadResponsibleTickets: '[tickets] loadResponsibleTickets',
   searchTicket: '[tickets] searchTicket',
   loadTicketDetails: '[tickets] loadTicketDetails',
+  loadTicketComments: '[tickets] loadTicketComments',
   loadResponsibleOptions: '[tickets] loadResponsibleOptions',
   addComment: '[tickets] addComment',
   changeStatus: '[tickets] changeStatus',
@@ -159,11 +165,13 @@ export const getterTypes = {
   myTickets: '[tickets] myTickets',
   responsibleTickets: '[tickets] responsibleTickets',
   selectedTicket: '[tickets] selectedTicket',
+  ticketComments: '[tickets] ticketComments',
   responsibleOptions: '[tickets] responsibleOptions',
   isLoadingMyTickets: '[tickets] isLoadingMyTickets',
   isLoadingResponsibleTickets: '[tickets] isLoadingResponsibleTickets',
   isCreatingTicket: '[tickets] isCreatingTicket',
   isLoadingTicketDetails: '[tickets] isLoadingTicketDetails',
+  isLoadingTicketComments: '[tickets] isLoadingTicketComments',
   isLoadingResponsibleOptions: '[tickets] isLoadingResponsibleOptions',
   isSubmittingComment: '[tickets] isSubmittingComment',
   isChangingStatus: '[tickets] isChangingStatus',
@@ -224,11 +232,13 @@ const getters = {
   [getterTypes.myTickets]: (localState) => localState.myTickets,
   [getterTypes.responsibleTickets]: (localState) => localState.responsibleTickets,
   [getterTypes.selectedTicket]: (localState) => localState.selectedTicket,
+  [getterTypes.ticketComments]: (localState) => localState.ticketComments,
   [getterTypes.responsibleOptions]: (localState) => localState.responsibleOptions,
   [getterTypes.isLoadingMyTickets]: (localState) => localState.isLoadingMyTickets,
   [getterTypes.isLoadingResponsibleTickets]: (localState) => localState.isLoadingResponsibleTickets,
   [getterTypes.isCreatingTicket]: (localState) => localState.isCreatingTicket,
   [getterTypes.isLoadingTicketDetails]: (localState) => localState.isLoadingTicketDetails,
+  [getterTypes.isLoadingTicketComments]: (localState) => localState.isLoadingTicketComments,
   [getterTypes.isLoadingResponsibleOptions]: (localState) => localState.isLoadingResponsibleOptions,
   [getterTypes.isSubmittingComment]: (localState) => localState.isSubmittingComment,
   [getterTypes.isChangingStatus]: (localState) => localState.isChangingStatus,
@@ -289,6 +299,7 @@ const mutations = {
   [mutationTypes.loadTicketDetailsStart](localState) {
     localState.isLoadingTicketDetails = true
     localState.selectedTicket = null
+    localState.ticketComments = []
     localState.responsibleOptions = []
     localState.ticketError = []
   },
@@ -301,8 +312,21 @@ const mutations = {
   [mutationTypes.loadTicketDetailsFail](localState, errors) {
     localState.isLoadingTicketDetails = false
     localState.selectedTicket = null
+    localState.ticketComments = []
     localState.responsibleOptions = []
     localState.ticketError = errors
+  },
+
+  [mutationTypes.loadTicketCommentsStart](localState) {
+    localState.isLoadingTicketComments = true
+  },
+  [mutationTypes.loadTicketCommentsSuccess](localState, comments) {
+    localState.isLoadingTicketComments = false
+    localState.ticketComments = Array.isArray(comments) ? comments : []
+  },
+  [mutationTypes.loadTicketCommentsFail](localState) {
+    localState.isLoadingTicketComments = false
+    localState.ticketComments = []
   },
 
   [mutationTypes.loadResponsibleOptionsStart](localState) {
@@ -500,6 +524,23 @@ const actions = {
         })
         .catch((error) => {
           context.commit(mutationTypes.loadTicketDetailsFail, [normalizeTicketError(error)])
+          resolve(error)
+        })
+    })
+  },
+
+  [actionTypes.loadTicketComments](context, number) {
+    return new Promise((resolve) => {
+      context.commit(mutationTypes.loadTicketCommentsStart)
+
+      ticketsApi.listTicketComments(number)
+        .then((response) => {
+          context.commit(mutationTypes.loadTicketCommentsSuccess, response?.data?.data || [])
+          resolve(response)
+        })
+        .catch((error) => {
+          // Комментарии не блокируют карточку — показываем пустой список.
+          context.commit(mutationTypes.loadTicketCommentsFail)
           resolve(error)
         })
     })

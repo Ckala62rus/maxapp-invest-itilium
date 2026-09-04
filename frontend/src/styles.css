@@ -847,6 +847,63 @@ textarea {
   margin-bottom: 8px;
 }
 
+.section-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.details-back-button {
+  white-space: nowrap;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.ticket-comments-card {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.ticket-comments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ticket-comments-header span {
+  color: #8fa4bf;
+  font-size: 13px;
+}
+
+.ticket-comments-header strong {
+  color: #dbe7f7;
+  font-size: 13px;
+}
+
+.ticket-comments-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #9eb4d0;
+}
+
+.ticket-comments-loading p,
+.ticket-comments-empty {
+  margin: 0;
+  color: #9eb4d0;
+  font-size: 14px;
+}
+
+.timeline-item strong {
+  display: block;
+  margin-top: 4px;
+  color: #e8f0fa;
+  font-size: 14px;
+}
+
 /* Уведомление после отправки комментария на экране карточки */
 .comment-success-banner {
   margin: 0 0 20px;

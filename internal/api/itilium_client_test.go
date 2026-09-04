@@ -299,3 +299,23 @@ func TestFormatItiliumCalendarDateConvertsISOInput(t *testing.T) {
 		t.Fatalf("formatItiliumCalendarDate() = %q, want 30.06.2026", got)
 	}
 }
+
+func TestParseListCommentResponseMapsSenderFields(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`[
+		{"date_sending":"20.04.2026 22:24:35","sender":"Иванов","comment":"тест"},
+		{"date_sending":"18.12.2025 13:51:08","sender":"Петров","comment":"второй"}
+	]`)
+
+	comments, err := parseListCommentResponse(payload)
+	if err != nil {
+		t.Fatalf("parseListCommentResponse() error = %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("len(comments) = %d, want 2", len(comments))
+	}
+	if comments[0].Author != "Иванов" || comments[0].Message != "тест" || comments[0].CreatedAt != "20.04.2026 22:24:35" {
+		t.Fatalf("first comment = %+v", comments[0])
+	}
+}

@@ -965,6 +965,56 @@ func (c *Client) GetTicket(ctx context.Context, userID string, number string) (m
 	return detail, nil
 }
 
+// ListComments returns ticket comments from ITILIUM legacy GET /list_comment.
+func (c *Client) ListComments(ctx context.Context, userID string, number string) ([]models.CommentEntry, error) {
+	query := map[string]string{
+		"id":        strings.TrimSpace(userID),
+		"sc_number": strings.TrimSpace(number),
+	}
+
+	raw, err := c.doJSONRequestPayload(ctx, http.MethodGet, "/list_comment", query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseListCommentResponse(raw)
+}
+
+// parseListCommentResponse maps 1C list_comment JSON into CommentEntry slice.
+func parseListCommentResponse(payload []byte) ([]models.CommentEntry, error) {
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	rawText := strings.TrimSpace(string(clean))
+	if rawText == "" {
+		return []models.CommentEntry{}, nil
+	}
+
+	var rows []map[string]any
+	if err := json.Unmarshal(clean, &rows); err != nil {
+		// Иногда 1С отдаёт ошибку строкой или объектом — пробуем общий разбор.
+		if _, objErr := unmarshalItiliumObjectOrStringError(clean); objErr != nil {
+			return nil, objErr
+		}
+		return nil, fmt.Errorf("decode list_comment response: %s", rawText)
+	}
+
+	result := make([]models.CommentEntry, 0, len(rows))
+	for _, row := range rows {
+		message := pickStringFromMap(row, "comment", "Comment", "message", "Message", "text", "Text")
+		author := pickStringFromMap(row, "sender", "Sender", "author", "Author", "fio", "FIO")
+		createdAt := pickStringFromMap(row, "date_sending", "dateSending", "DateSending", "createdAt", "CreatedAt", "date", "Date")
+		if strings.TrimSpace(message) == "" && strings.TrimSpace(author) == "" && strings.TrimSpace(createdAt) == "" {
+			continue
+		}
+		result = append(result, models.CommentEntry{
+			Author:    author,
+			Message:   message,
+			CreatedAt: createdAt,
+		})
+	}
+
+	return result, nil
+}
+
 // pathCreateSC — HTTP-сервис 1С «создать IT-заявку» (id, shortDescription, description, files).
 const pathCreateSC = "/create_sc"
 
@@ -3108,6 +3158,17 @@ func (c *DemoClient) ListResponsibleTickets(_ context.Context, _ string) ([]mode
 // GetTicket returns one static ticket card.
 func (c *DemoClient) GetTicket(_ context.Context, _ string, number string) (models.TicketDetail, error) {
 	return demoTicket(number), nil
+}
+
+// ListComments returns synthetic comments for the demo ticket card.
+func (c *DemoClient) ListComments(_ context.Context, _ string, number string) ([]models.CommentEntry, error) {
+	ticket := demoTicket(number)
+	if len(ticket.Timeline) > 0 {
+		return ticket.Timeline, nil
+	}
+	return []models.CommentEntry{
+		{Author: "Система", Message: "Демо-комментарий по заявке " + number, CreatedAt: "01.01.2026 12:00:00"},
+	}, nil
 }
 
 // CreateTicket creates a synthetic ticket result for the scaffold.

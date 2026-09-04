@@ -23,6 +23,8 @@ type ItiliumClient interface {
 	ListResponsibleTickets(ctx context.Context, userID string) ([]models.TicketSummary, error)
 	// GetTicket returns a detailed ticket card.
 	GetTicket(ctx context.Context, userID string, number string) (models.TicketDetail, error)
+	// ListComments returns comments for the ticket card.
+	ListComments(ctx context.Context, userID string, number string) ([]models.CommentEntry, error)
 	// CreateTicket creates a new ITILIUM ticket.
 	CreateTicket(ctx context.Context, request models.CreateTicketRequest) (models.TicketDetail, error)
 	// AddComment adds a new timeline entry to a ticket.
@@ -140,6 +142,25 @@ func (s *TicketService) SearchTicket(ctx context.Context, request models.SearchT
 	}
 
 	return s.client.SearchTicket(ctx, request)
+}
+
+// ListComments returns comments for the ticket from ITILIUM list_comment.
+func (s *TicketService) ListComments(ctx context.Context, userID string, number string) ([]models.CommentEntry, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, errors.New("user id is required")
+	}
+	if strings.TrimSpace(number) == "" {
+		return nil, errors.New("ticket number is required")
+	}
+
+	comments, err := s.client.ListComments(ctx, userID, number)
+	if err != nil {
+		return nil, err
+	}
+	if comments == nil {
+		return []models.CommentEntry{}, nil
+	}
+	return comments, nil
 }
 
 // AddComment appends a new comment to a ticket.

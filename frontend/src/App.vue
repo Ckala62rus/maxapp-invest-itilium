@@ -108,6 +108,7 @@ const {
   isLoadingResponsibleTickets,
   isCreatingTicket,
   isLoadingTicketDetails,
+  isLoadingTicketComments,
   isLoadingResponsibleOptions,
   isSubmittingComment,
   isChangingStatus,
@@ -134,6 +135,9 @@ const {
   availableStatusOptions,
   availableResponsibleOptions,
   selectedTicketTimeline,
+  paginatedTicketComments,
+  commentsPageCount,
+  currentCommentsPage,
   loadTicketLists,
   openTicketDetails,
   searchTicketByNumber,
@@ -152,6 +156,7 @@ const {
   requestResponsibleOptions,
   submitTicketRating,
   setTicketsPage,
+  setCommentsPage,
   setSearchQuery,
   setCommentDraft
 } = useTicketFlow({
@@ -373,6 +378,10 @@ function openResponsibleTicketDetails(ticketNumber) {
           :ticket-errors="ticketErrors"
           :details-origin="detailsOrigin"
           :selected-ticket-timeline="selectedTicketTimeline"
+          :paginated-ticket-comments="paginatedTicketComments"
+          :comments-page-count="commentsPageCount"
+          :current-comments-page="currentCommentsPage"
+          :is-loading-ticket-comments="isLoadingTicketComments"
           :comment-draft="commentDraft"
           :comment-attachment-files="commentAttachmentFiles"
           :comment-success-tick="commentSuccessTick"
@@ -396,6 +405,7 @@ function openResponsibleTicketDetails(ticketNumber) {
           @assign-responsible="assignResponsible"
           @request-responsible-options="requestResponsibleOptions"
           @submit-ticket-rating="submitTicketRating"
+          @set-comments-page="setCommentsPage"
         />
 
         <transition name="banner">

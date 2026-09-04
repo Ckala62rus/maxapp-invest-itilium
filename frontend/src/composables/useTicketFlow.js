@@ -18,6 +18,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
 
   // Page size for «Мои заявки» when the list is built from ITILIUM `servicecalls`.
   const myTicketsPageSize = 10
+  // Пагинация ленты комментариев на карточке (ответ list_comment целиком, режем на клиенте).
+  const commentsPageSize = 5
+  const currentCommentsPage = ref(1)
 
   // The search field persists the current ticket number between list and search flows.
   const searchQuery = ref('')
@@ -119,11 +122,13 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       }))
   })
   const selectedTicket = computed(() => store.getters[ticketGetterTypes.selectedTicket] || null)
+  const storeTicketComments = computed(() => store.getters[ticketGetterTypes.ticketComments] || [])
   const responsibleOptions = computed(() => store.getters[ticketGetterTypes.responsibleOptions] || [])
   const isLoadingMyTickets = computed(() => store.getters[ticketGetterTypes.isLoadingMyTickets])
   const isLoadingResponsibleTickets = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleTickets])
   const isCreatingTicket = computed(() => store.getters[ticketGetterTypes.isCreatingTicket])
   const isLoadingTicketDetails = computed(() => store.getters[ticketGetterTypes.isLoadingTicketDetails])
+  const isLoadingTicketComments = computed(() => store.getters[ticketGetterTypes.isLoadingTicketComments])
   const isLoadingResponsibleOptions = computed(() => store.getters[ticketGetterTypes.isLoadingResponsibleOptions])
   const isSubmittingComment = computed(() => store.getters[ticketGetterTypes.isSubmittingComment])
   const isChangingStatus = computed(() => store.getters[ticketGetterTypes.isChangingStatus])
@@ -306,15 +311,23 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
   const availableResponsibleOptions = computed(() => responsibleOptions.value)
 
   const selectedTicketTimeline = computed(() => {
-    if (!selectedTicket.value?.timeline?.length) {
-      return []
-    }
+    // Приоритет — отдельный list_comment; fallback — timeline из карточки (демо/после add_comment).
+    const source = storeTicketComments.value.length
+      ? storeTicketComments.value
+      : (selectedTicket.value?.timeline || [])
 
-    return selectedTicket.value.timeline.map((item) => ({
+    return source.map((item) => ({
       actor: item.author || item.actor || 'Система',
       text: item.message || item.text || '',
       time: formatTimelineTime(item.createdAt || item.time || '')
     }))
+  })
+
+  const commentsPageCount = computed(() => Math.ceil(selectedTicketTimeline.value.length / commentsPageSize) || 0)
+
+  const paginatedTicketComments = computed(() => {
+    const start = (currentCommentsPage.value - 1) * commentsPageSize
+    return selectedTicketTimeline.value.slice(start, start + commentsPageSize)
   })
 
   // When a new detail payload arrives, derived forms stay in sync with the same
@@ -323,6 +336,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     commentDraft.value = ''
     commentAttachmentFiles.value = []
     selectedResponsibleId.value = ''
+    currentCommentsPage.value = 1
     statusForm.value = {
       state: ticket?.availableStates?.[0] || '',
       comment: '',
@@ -330,6 +344,12 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     }
 
   }, { immediate: true })
+
+  watch(commentsPageCount, (count) => {
+    if (count > 0 && currentCommentsPage.value > count) {
+      currentCommentsPage.value = count
+    }
+  })
 
   function loadTicketLists() {
     // Для «Мои заявки» используем backend list_sc (через /api/v1/tickets) и fallback на servicecalls.
@@ -341,7 +361,10 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     detailsOrigin.value = source
     searchQuery.value = ticketNumber
     activeScreen.value = 'details'
+    currentCommentsPage.value = 1
     await store.dispatch(ticketActionTypes.loadTicketDetails, ticketNumber)
+    // Комментарии подгружаем параллельно после карточки — ошибка list_comment не закрывает details.
+    store.dispatch(ticketActionTypes.loadTicketComments, ticketNumber)
   }
 
   // Search now goes through the dedicated backend endpoint so the details screen
@@ -360,6 +383,8 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     if (response?.data?.success) {
       detailsOrigin.value = 'search'
       activeScreen.value = 'details'
+      currentCommentsPage.value = 1
+      store.dispatch(ticketActionTypes.loadTicketComments, number)
     }
   }
 
@@ -510,7 +535,18 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
       commentAttachmentFiles.value = []
       submitBanner.value = 'Комментарий успешно отправлен.'
       commentSuccessTick.value += 1
+      // После записи обновляем ленту из list_comment — find_sc timeline не заполняет.
+      await store.dispatch(ticketActionTypes.loadTicketComments, selectedTicket.value.number)
+      currentCommentsPage.value = 1
     }
+  }
+
+  function setCommentsPage(page) {
+    const next = Number(page) || 1
+    if (next < 1 || (commentsPageCount.value > 0 && next > commentsPageCount.value)) {
+      return
+    }
+    currentCommentsPage.value = next
   }
 
   function addCommentAttachments(fileList) {
@@ -643,6 +679,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     isLoadingResponsibleTickets,
     isCreatingTicket,
     isLoadingTicketDetails,
+    isLoadingTicketComments,
     isLoadingResponsibleOptions,
     isSubmittingComment,
     isChangingStatus,
@@ -671,6 +708,9 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     availableStatusOptions,
     availableResponsibleOptions,
     selectedTicketTimeline,
+    paginatedTicketComments,
+    commentsPageCount,
+    currentCommentsPage,
     loadTicketLists,
     openTicketDetails,
     searchTicketByNumber,
@@ -690,6 +730,7 @@ export function useTicketFlow({ store, currentUser, activeScreen, submitBanner }
     requestResponsibleOptions,
     submitTicketRating,
     setTicketsPage,
+    setCommentsPage,
     setSearchQuery,
     setCommentDraft
   }
@@ -780,13 +821,22 @@ function formatTimelineTime(value) {
     return ''
   }
 
-  const parsedDate = new Date(value)
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return value
+  const raw = String(value).trim()
+  // Формат list_comment: «20.04.2026 22:24:35» — показываем как есть.
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(raw)) {
+    return raw
   }
 
-  return parsedDate.toLocaleTimeString('ru-RU', {
+  const parsedDate = new Date(raw)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return raw
+  }
+
+  return parsedDate.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
   })
