@@ -48,22 +48,29 @@ export function getMaxStartParam() {
 }
 
 /**
- * Извлекает номер заявки из start_param бота.
- * Формат уведомлений: ticket_IT-00001234 (см. tools/max-notify/notify.py).
- * Двоеточие в start_param MAX не принимает — только A-Z, a-z, 0-9, _, -.
+ * Resolves the entity a MAX open_app button asks the Mini App to display.
+ * Notification payloads use ticket_<number> or approval_<vote_number>.
+ * MAX start_param accepts only A-Z, a-z, 0-9, underscore, and hyphen.
  */
-export function parseTicketNumberFromStartParam(startParam) {
+export function parseStartTargetFromStartParam(startParam) {
   const raw = String(startParam || '').trim()
   if (!raw) {
-    return ''
+    return null
   }
 
-  const prefixed = raw.match(/^ticket[_:=-](.+)$/i)
-  if (prefixed?.[1]) {
-    return prefixed[1].trim()
+  // approval_ must be recognized before the legacy ticket fallback so it never becomes a ticket number.
+  const approval = raw.match(/^approval_(.+)$/i)
+  if (approval?.[1]?.trim()) {
+    return { type: 'approval', number: approval[1].trim() }
   }
 
-  return raw
+  // Keep supporting historical ticket separators and bare ticket numbers used by existing notifications.
+  const ticket = raw.match(/^ticket[_:=-](.+)$/i)
+  if (ticket?.[1]?.trim()) {
+    return { type: 'ticket', number: ticket[1].trim() }
+  }
+
+  return { type: 'ticket', number: raw }
 }
 
 /**

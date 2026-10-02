@@ -87,6 +87,18 @@ func (s *itiliumClientStub) CreateMarketingRequest(_ context.Context, _ models.C
 	return models.TicketDetail{Number: "SC-M-1", Title: "Marketing"}, nil
 }
 
+func (s *itiliumClientStub) ListApprovals(_ context.Context, _ string) ([]models.ApprovalSummary, error) {
+	return []models.ApprovalSummary{{Number: "000001830", Description: "Согласование", DeadlineHours: 120}}, nil
+}
+
+func (s *itiliumClientStub) GetApproval(_ context.Context, _ string, number string) (models.ApprovalDetail, error) {
+	return models.ApprovalDetail{Number: number}, nil
+}
+
+func (s *itiliumClientStub) VoteApproval(_ context.Context, _ models.VoteApprovalRequest) (string, error) {
+	return "Согласование подтверждено.", nil
+}
+
 func TestTicketServiceGetTicketUsesCache(t *testing.T) {
 	// Arrange: создаём stub и сервис. Redis cache передаём с nil-клиентом,
 	// потому что в этом unit-тесте нам не нужен настоящий Redis.

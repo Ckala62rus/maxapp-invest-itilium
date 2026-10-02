@@ -2,7 +2,7 @@
   "info": {
     "name": "ITILIUM Raw API (hs/Max)",
     "_postman_id": "9d66f186-ccf9-4f44-9087-a31f069586dd",
-    "description": "Raw ITILIUM endpoints collection for direct debugging of 1C publication.\n\nCollection auth: Basic Auth (itiliumLogin / itiliumPassword).\n\nVariables:\n- itiliumBaseUrl: e.g. https://1c.tdbars.ru/itilium_test/hs/Max\n- userId: MAX user identifier used as id/telegram\n- ticketNumber: incident number\n- responsibleId: target responsible employee id\n- newState: target workflow state",
+    "description": "Raw ITILIUM endpoints collection for direct debugging of 1C publication.\n\nCollection auth: Basic Auth (itiliumLogin / itiliumPassword).\n\nVariables:\n- itiliumBaseUrl: e.g. https://1c.tdbars.ru/itilium-test/hs/Max\n- userId: MAX user identifier used as id/telegram\n- ticketNumber: incident number\n- approvalNumber: approval task number\n- responsibleId: target responsible employee id\n- newState: target workflow state",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -23,7 +23,7 @@
   "variable": [
     {
       "key": "itiliumBaseUrl",
-      "value": "https://1c.tdbars.ru/itilium_test/hs/Max"
+      "value": "https://1c.tdbars.ru/itilium-test/hs/Max"
     },
     {
       "key": "itiliumLogin",
@@ -40,6 +40,10 @@
     {
       "key": "ticketNumber",
       "value": "0000019683"
+    },
+    {
+      "key": "approvalNumber",
+      "value": "000001830"
     },
     {
       "key": "responsibleId",
@@ -504,6 +508,64 @@
               ]
             },
             "description": "Legacy голосование в workflow (используется не на всех контурах)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Approvals",
+      "item": [
+        {
+          "name": "list_negotations (GET)",
+          "description": "Получение списка номеров согласований сотрудника по идентификатору MAX.",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/list_negotations?id={{userId}}",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "list_negotations"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор сотрудника MAX, по которому запрашиваются согласования."
+                }
+              ]
+            },
+            "description": "GET /list_negotations?id={maxUserId}; тело запроса не передаётся."
+          }
+        },
+        {
+          "name": "find_negotation (GET)",
+          "description": "Получение подробной информации по одному согласованию.",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{itiliumBaseUrl}}/find_negotation?id={{userId}}&vote_number={{approvalNumber}}",
+              "host": [
+                "{{itiliumBaseUrl}}"
+              ],
+              "path": [
+                "find_negotation"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "Идентификатор сотрудника MAX, выполняющего просмотр согласования."
+                },
+                {
+                  "key": "vote_number",
+                  "value": "{{approvalNumber}}",
+                  "description": "Номер согласования из ответа list_negotations."
+                }
+              ]
+            },
+            "description": "GET /find_negotation?id={maxUserId}&vote_number={approvalNumber}; тело запроса не передаётся."
           }
         }
       ]

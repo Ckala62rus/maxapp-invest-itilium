@@ -40,6 +40,7 @@ function openScreen(screenId) {
       <div class="hero-actions home-hero-actions">
         <button type="button" class="primary-button wide" @click="openScreen('create')">Создать заявку</button>
         <button type="button" class="secondary-button" @click="openScreen('myTickets')">Мои заявки</button>
+        <button type="button" class="secondary-button" @click="openScreen('myApprovals')">Мои согласования</button>
       </div>
     </div>
 

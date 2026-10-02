@@ -12,7 +12,8 @@ function enableBusyModalInteraction(popup) {
   document.documentElement.classList.add('swal2-shown')
   const container = Swal.getContainer()
   if (container) {
-    container.style.setProperty('display', 'flex', 'important')
+    // Preserve SweetAlert2 grid centering while restoring interaction in MAX/Qt WebView.
+    container.style.setProperty('display', 'grid', 'important')
     container.style.visibility = 'visible'
     container.style.pointerEvents = 'auto'
     container.removeAttribute('aria-hidden')

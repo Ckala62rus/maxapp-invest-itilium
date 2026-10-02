@@ -438,9 +438,9 @@ sudo docker compose --env-file .env logs -f backend
 sudo docker compose --env-file .env logs -f web
 ```
 
-### 13.1. Проверка кнопки «Открыть заявку» (deep link) на production
+### 13.1. Проверка кнопок «Открыть заявку / согласование» (deep link) на production
 
-Сценарий: после деплоя кода с поддержкой `start_param` отправить себе личное сообщение из Postman с кнопкой `open_app` и убедиться, что mini app открывается сразу на карточке заявки.
+Сценарий: после деплоя кода с поддержкой `start_param` отправить себе личное сообщение из Postman с кнопкой `open_app` и убедиться, что mini app открывается сразу на карточке заявки или согласования.
 
 #### Шаг 1. Выгрузить обновлённый код на сервер
 
@@ -474,7 +474,7 @@ https://your.domain.example/
 
 #### Шаг 3. Postman — параметры
 
-Коллекция: `tools/max-notify/max-notify.postman_collection.json`.
+Коллекция: `documentation/max-notify.postman_collection.json`.
 
 | Переменная | Значение |
 |------------|----------|
@@ -482,15 +482,19 @@ https://your.domain.example/
 | `maxNotifyUserId` | **ваш** MAX user id (получатель лички) |
 | `maxBotContactId` | `user_id` бота из **GET /me** |
 | `ticketNumber` | номер заявки, напр. `0000024311` |
+| `approvalNumber` | номер согласования (`vote_number`), напр. `000001830` |
 
 1. **GET /me** — скопируйте `user_id` → `maxBotContactId`, `username` → `maxBotWebApp` (если нужен).
 2. Убедитесь, что вы **хотя бы раз** открывали чат с ботом в MAX (иначе личка не доставится).
 
 #### Шаг 4. Отправить сообщение с кнопкой
 
-Запрос **POST /messages — open_app (contact_id)** (надёжнее, чем `web_app` с чужим username).
+В коллекции используйте один из запросов с `contact_id` (надёжнее, чем `web_app` с чужим username):
 
-Тело (подставьте свои значения):
+- **POST /messages — открыть заявку в Mini App** — payload `ticket_{{ticketNumber}}`;
+- **POST /messages — открыть согласование в Mini App** — payload `approval_{{approvalNumber}}`.
+
+Тело для заявки (подставьте свои значения):
 
 ```json
 {
@@ -517,8 +521,8 @@ https://your.domain.example/
 ```
 
 - **`contact_id`** — из GET /me (не из примеров README).
-- **`payload`** — строго `ticket_{номер}`; двоеточие MAX не принимает.
-- Заявка должна **существовать в ITILIUM** и быть доступна **вашему** пользователю.
+- **`payload`** — строго `ticket_{номер}` для заявки либо `approval_{vote_number}` для согласования; двоеточие MAX не принимает.
+- Заявка или согласование должны **существовать в ITILIUM** и быть доступны **вашему** пользователю.
 
 Успех Postman: **HTTP 200**, в теле объект `message`.
 
@@ -534,7 +538,7 @@ python notify.py --template assigned --ticket 0000024311
 1. Откройте **MAX** (телефон или desktop).
 2. Личка с ботом → новое сообщение → **«Открыть …»**.
 3. Должно открыться **mini app на production** (не браузер с localhost).
-4. После «Проверяем MAX-сессию…» — экран **«Карточка заявки»** с номером `0000024311`, не главная.
+4. После «Проверяем MAX-сессию…» — экран **«Карточка заявки»** с номером `0000024311` либо карточка согласования с `vote_number`, не главная.
 
 #### Шаг 6. Что смотреть, если что-то не так
 
@@ -542,9 +546,9 @@ python notify.py --template assigned --ticket 0000024311
 |---------|-------------------|
 | Postman **404** `Link not found ... invest_it_bot` | Неверный `web_app`; используйте **contact_id** из GET /me |
 | Сообщение не приходит | Не открывали чат с ботом; неверный `maxNotifyUserId` |
-| Открылась **главная**, не заявка | На prod старый frontend; deep link не задеployен |
+| Открылась **главная**, не нужная карточка | На prod старый frontend; deep link не задеployен или payload имеет неверный префикс |
 | Открылась главная, auth OK | Старый кэш WebView — закройте mini app и откройте снова с кнопки |
-| Карточка с ошибкой | Неверный номер или заявка недоступна вашему user id в 1С |
+| Карточка с ошибкой | Неверный номер либо заявка/согласование недоступны вашему user id в 1С |
 | Mini app не открывается | URL mini app в настройках бота не совпадает с prod |
 
 Логи backend при успехе (фильтр по времени нажатия кнопки):
@@ -553,6 +557,8 @@ python notify.py --template assigned --ticket 0000024311
 POST /api/v1/auth/max/validate
 GET  /api/v1/users/me
 GET  /api/v1/tickets/0000024311
+# либо для согласования:
+GET  /api/v1/approvals/000001830
 ```
 
 Локальная отладка без MAX: `documentation/local_development.md` → раздел «Проверка deep link».

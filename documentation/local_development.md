@@ -64,6 +64,63 @@ Vite в контейнере `frontend` проксирует `/api` на `http:/
 
 Если нужен стабильный `:8080` без перезагрузок, задайте в сервисе `frontend` переменную `VITE_DISABLE_HMR=true` и обновляйте страницу вручную (Ctrl+F5).
 
+## Как применить изменения в Docker dev-стеке
+
+Исходники `backend-dev` и `frontend` смонтированы в контейнеры. Поэтому изменения обычного Go/Vue-кода обычно применяются автоматически: Air перезапускает backend, а Vite обновляет frontend через HMR. Для разработки на Windows используйте **`http://localhost:5173`**, а не `:8080`.
+
+### Изменения backend (Go)
+
+После изменения `.go`, `.yml` или `.yaml` следите за пересборкой Air:
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f --tail=100 backend-dev
+```
+
+Если Air не подхватил изменения, изменились Dockerfile/переменные Compose или backend нужно гарантированно перезапустить, выполните:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build --force-recreate backend-dev
+```
+
+После запуска проверьте API:
+
+```bash
+curl -fsS http://127.0.0.1:3000/healthz
+curl -fsS http://127.0.0.1:3000/readyz
+```
+
+### Изменения frontend (Vue/Vite)
+
+После изменения `.vue`, `.js` или `.css` Vite должен обновить страницу через HMR. Если интерфейс, DOM или запросы в DevTools остались от старой версии, пересоздайте только Vite-контейнер:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --force-recreate frontend
+```
+
+Затем откройте `http://localhost:5173` в новой вкладке или выполните **Ctrl+F5**. При открытых DevTools включите **Network → Disable cache**.
+
+После изменения `frontend/package.json` или lock-файла сначала обновите зависимости в Docker volume, затем пересоздайте Vite:
+
+```bash
+docker compose -f docker-compose.dev.yml exec frontend npm install
+docker compose -f docker-compose.dev.yml up -d --force-recreate frontend
+```
+
+Логи Vite и прокси API:
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f --tail=100 frontend
+```
+
+### Быстрая диагностика
+
+```bash
+docker compose -f docker-compose.dev.yml ps
+docker compose -f docker-compose.dev.yml logs -f --tail=100 backend-dev frontend web-dev
+```
+
+> При изменении `docker-compose.dev.yml`, `.env` или `VITE_*`-переменных всегда используйте `up -d --force-recreate` для затронутого сервиса: простой `restart` не применяет новое окружение контейнера.
+
 ---
 
 ## Backend через `go run` на хосте
@@ -157,9 +214,9 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate frontend
 
 ---
 
-## Проверка deep link «Открыть заявку» (кнопка в боте)
+## Проверка deep link «Открыть заявку / согласование» (кнопка в боте)
 
-Кнопка `open_app` в личке MAX передаёт в mini app строку `start_param`, например `ticket_0000024311`. Frontend при старте открывает **карточку заявки** с этим номером.
+Кнопка `open_app` в личке MAX передаёт в mini app строку `start_param`: `ticket_0000024311` для заявки либо `approval_000001830` для согласования. Frontend при старте открывает соответствующую карточку.
 
 ### Шаг 0. Подготовка
 
@@ -188,15 +245,20 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate frontend
 http://localhost:5173/?startapp=ticket_0000024311
 ```
 
-Подставьте реальный номер заявки из ITILIUM (как в `find_sc` / списке «Мои заявки»).
+Для согласования используйте:
+
+```
+http://localhost:5173/?startapp=approval_000001830
+```
+
+Подставьте реальный номер заявки из ITILIUM (как в `find_sc` / списке «Мои заявки») либо реальный `vote_number` согласования (как в `find_negotation` / «Мои согласования»).
 
 **Ожидаемое поведение:**
 
 1. Кратко «Проверяем MAX-сессию…»
-2. Открывается экран **«Карточка заявки»**, не главная
-3. В Console (F12) — `[nav] startup deep link ticket { ticketNumber: "0000024311" }`
-4. В Network — `GET /api/v1/tickets/0000024311` со статусом **200**
-5. На карточке видны тема и статус заявки
+2. Открывается **«Карточка заявки»** или карточка согласования, не главная
+3. В Network для заявки — `GET /api/v1/tickets/0000024311` со статусом **200**; для согласования — `GET /api/v1/approvals/000001830`
+4. На карточке видны данные соответствующей заявки или согласования
 
 **Если остались на главной:**
 
@@ -205,7 +267,7 @@ http://localhost:5173/?startapp=ticket_0000024311
 | Старый JS в кэше | **Ctrl+F5** или DevTools → Network → Disable cache |
 | Нет debug user id | Задайте `VITE_DEBUG_USER_ID` в `frontend/.env.local`, перезапустите `frontend` |
 | Просроченный token | DevTools → Application → Local Storage → удалите `access_token`, обновите страницу |
-| Неверный формат | Только `ticket_` + номер, без двоеточия (`ticket:…` MAX не принимает) |
+| Неверный формат | `ticket_` + номер для заявки или `approval_` + `vote_number` для согласования; MAX не принимает двоеточие |
 | В Console `[nav] deep link skipped` | Смотрите поля `bootstrapOk`, `employeeFound` — auth не прошёл |
 
 **Если карточка пустая / ошибка** — заявка недоступна этому пользователю в ITILIUM или неверный номер; проверьте тот же номер через «Поиск» в меню приложения.
@@ -264,19 +326,26 @@ MAX на телефоне **не откроет** `http://localhost:5173` — н
    python notify.py --template assigned --ticket 0000024311
    ```
 
+   Отправка с кнопкой на согласование `000001830`:
+
+   ```bash
+   python notify.py --template approval_assigned --approval 000001830
+   ```
+
    Или свой текст:
 
    ```bash
    python notify.py "Тест deep link" --ticket 0000024311
+   python notify.py "Тест deep link согласования" --approval 000001830
    ```
 
 4. В приложении **MAX** откройте личку с ботом → нажмите **«Открыть заявку»**.
 
-5. **Ожидаемое поведение:** открывается mini app по HTTPS-туннелю → сразу карточка `0000024311`.
+5. **Ожидаемое поведение:** открывается mini app по HTTPS-туннелю → сразу карточка заявки `0000024311` или выбранного согласования.
 
 **Если открывается главная без заявки:**
 
-- В DevTools (remote debug WebView) или в блоке «MAX bridge debug» на главной проверьте, что `initDataUnsafe.start_param` = `ticket_0000024311`
+- В DevTools (remote debug WebView) или в блоке «MAX bridge debug» на главной проверьте, что `initDataUnsafe.start_param` = `ticket_0000024311` или `approval_000001830`
 - Убедитесь, что задеployен frontend с поддержкой `start_param` (файлы `maxBridge.js`, `App.vue`)
 - URL бота должен указывать на **тот же** стенд, куда вы деплоите код (не production, если тестируете локально)
 

@@ -12,6 +12,9 @@ const urls = {
   ticketResponsibles: (number) => `/api/v1/tickets/${number}/responsibles`,
   ticketResponsible: (number) => `/api/v1/tickets/${number}/responsible`,
   ticketConfirm: (number) => `/api/v1/tickets/${number}/confirm`,
+  approvals: '/api/v1/approvals',
+  approvalDetails: (number) => `/api/v1/approvals/${encodeURIComponent(number)}`,
+  approvalVote: (number) => `/api/v1/approvals/${encodeURIComponent(number)}/vote`,
   marketingServices: '/api/v1/marketing/services',
   marketingSubdivisions: '/api/v1/marketing/subdivisions',
   marketingRequests: '/api/v1/marketing/requests'

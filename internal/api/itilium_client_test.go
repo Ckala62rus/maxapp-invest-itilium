@@ -1,11 +1,115 @@
 package api
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/Ckala62rus/maxapp-invest-itilium/internal/models"
 )
+
+func TestParseApprovalSummaries(t *testing.T) {
+	t.Parallel()
+
+	approvals, err := parseApprovalSummaries([]byte(`[
+		{"vote_number":"000001834","description":"апавпавп","deadline_date":120},
+		{"vote_number":"000001907","description":"лоашпщршщ","deadline_date":72},
+		{"vote_number":"000001834","description":"дубликат","deadline_date":24}
+	]`))
+	if err != nil {
+		t.Fatalf("parseApprovalSummaries() error = %v", err)
+	}
+	if len(approvals) != 2 {
+		t.Fatalf("parseApprovalSummaries() count = %d, want 2", len(approvals))
+	}
+	if got := approvals[0]; got.Number != "000001834" || got.Description != "апавпавп" || got.DeadlineHours != 120 {
+		t.Fatalf("first approval = %+v, want list_negotations fields", got)
+	}
+	if got := approvals[1]; got.Number != "000001907" || got.DeadlineHours != 72 {
+		t.Fatalf("second approval = %+v, want number 000001907 and deadline 72", got)
+	}
+}
+
+func TestApprovalRequestsUseGETQueryParameters(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+			return
+		}
+		if request.Method != http.MethodGet {
+			t.Errorf("%s method = %s, want GET", request.URL.Path, request.Method)
+		}
+		if len(body) != 0 {
+			t.Errorf("%s request body = %q, want empty", request.URL.Path, body)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/list_negotations":
+			if got := request.URL.Query().Get("id"); got != "40367639" {
+				t.Errorf("list_negotations id = %q, want 40367639", got)
+			}
+			_, _ = writer.Write([]byte(`[{"vote_number":"000001830","description":"Согласование","deadline_date":120}]`))
+		case "/find_negotation":
+			if got := request.URL.Query().Get("id"); got != "40367639" {
+				t.Errorf("find_negotation id = %q, want 40367639", got)
+			}
+			if got := request.URL.Query().Get("vote_number"); got != "000001830" {
+				t.Errorf("find_negotation vote_number = %q, want 000001830", got)
+			}
+			_, _ = writer.Write([]byte(`{"author":"Иванов","description":"Согласование"}`))
+		default:
+			t.Errorf("unexpected request path: %s", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := &Client{
+		baseURL:    server.URL,
+		httpClient: server.Client(),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	approvals, err := client.ListApprovals(t.Context(), " 40367639 ")
+	if err != nil {
+		t.Fatalf("ListApprovals() error = %v", err)
+	}
+	if len(approvals) != 1 || approvals[0].Number != "000001830" || approvals[0].Description != "Согласование" || approvals[0].DeadlineHours != 120 {
+		t.Fatalf("ListApprovals() = %+v, want the list_negotations summary", approvals)
+	}
+
+	detail, err := client.GetApproval(t.Context(), " 40367639 ", " 000001830 ")
+	if err != nil {
+		t.Fatalf("GetApproval() error = %v", err)
+	}
+	if detail.Number != "000001830" || detail.Author != "Иванов" {
+		t.Fatalf("GetApproval() = %+v", detail)
+	}
+}
+
+func TestParseApprovalVoteResponse(t *testing.T) {
+	t.Parallel()
+
+	message, err := parseApprovalVoteResponse([]byte(`"Согласование выполнено"`))
+	if err != nil {
+		t.Fatalf("parseApprovalVoteResponse() error = %v", err)
+	}
+	if message != "Согласование выполнено" {
+		t.Fatalf("message = %q", message)
+	}
+
+	_, err = parseApprovalVoteResponse([]byte(`{"error":"Недостаточно прав"}`))
+	if err == nil || !strings.Contains(err.Error(), "Недостаточно прав") {
+		t.Fatalf("parseApprovalVoteResponse() error = %v, want upstream business error", err)
+	}
+}
 
 func TestBuildCreateSCLongDescriptionDoesNotAppendMetadata(t *testing.T) {
 	t.Parallel()
@@ -141,8 +245,8 @@ func TestParseFindSCResponseMapsResponsibleEmployeeID(t *testing.T) {
 	t.Parallel()
 
 	detail := parseFindSCResponse(map[string]any{
-		"number":                  "0000024294",
-		"responsibleEmployeeId":   "0000000099",
+		"number":                   "0000024294",
+		"responsibleEmployeeId":    "0000000099",
 		"responsibleEmployeeTitle": "Тюгаева Дарья Викторовна",
 	}, "0000024294")
 

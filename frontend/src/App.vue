@@ -11,13 +11,16 @@ import ProfileScreen from '@/screens/ProfileScreen.vue'
 import RegistrationScreen from '@/screens/RegistrationScreen.vue'
 import CreateTicketScreen from '@/screens/CreateTicketScreen.vue'
 import MyTicketsScreen from '@/screens/MyTicketsScreen.vue'
+import MyApprovalsScreen from '@/screens/MyApprovalsScreen.vue'
+import ApprovalDetailsScreen from '@/screens/ApprovalDetailsScreen.vue'
 import ResponsibleTicketsScreen from '@/screens/ResponsibleTicketsScreen.vue'
 import SearchTicketScreen from '@/screens/SearchTicketScreen.vue'
 import TicketDetailsScreen from '@/screens/TicketDetailsScreen.vue'
 import { useAuthFlow } from '@/composables/useAuthFlow'
 import { useTicketFlow } from '@/composables/useTicketFlow'
+import { useApprovalFlow } from '@/composables/useApprovalFlow'
 import { purgeTouchBlockers } from '@/helpers/purgeTouchBlockers'
-import { getMaxStartParam, parseTicketNumberFromStartParam } from '@/api/maxBridge'
+import { getMaxStartParam, parseStartTargetFromStartParam } from '@/api/maxBridge'
 import { getSessionItem, setSessionItem } from '@/helpers/persistenceStorage'
 
 const store = useStore()
@@ -30,6 +33,8 @@ const baseScreenOptions = [
   { id: 'registration', label: 'Регистрация' },
   { id: 'create', label: 'Создать заявку' },
   { id: 'myTickets', label: 'Мои заявки' },
+  { id: 'myApprovals', label: 'Мои согласования' },
+  { id: 'approvalDetails', label: 'Карточка согласования' },
   { id: 'responsible', label: 'В ответственности' },
   { id: 'search', label: 'Поиск' },
   { id: 'details', label: 'Карточка заявки' }
@@ -58,7 +63,12 @@ const isDebugUiEnabled = computed(() => {
 })
 
 const screenOptions = computed(() => {
-  return baseScreenOptions.filter((screen) => isDebugUiEnabled.value || screen.id !== 'registration')
+  const hiddenFromNavigation = new Set(['approvalDetails', 'details'])
+  return baseScreenOptions.filter((screen) => {
+    return !hiddenFromNavigation.has(screen.id) &&
+      screen.id !== 'myApprovals' &&
+      (isDebugUiEnabled.value || screen.id !== 'registration')
+  })
 })
 
 const showPrototypeNavigation = computed(() => {
@@ -166,35 +176,60 @@ const {
   submitBanner
 })
 
+const {
+  currentApprovalsPage,
+  voteComment,
+  paginatedApprovals,
+  approvalsPageCount,
+  selectedApproval,
+  isLoadingApprovals,
+  isLoadingApprovalDetails,
+  isSubmittingApprovalVote,
+  approvalListErrors,
+  approvalDetailsErrors,
+  loadApprovals,
+  openApproval,
+  setApprovalsPage,
+  setVoteComment,
+  submitApprovalVote
+} = useApprovalFlow({
+  store,
+  activeScreen,
+  submitBanner
+})
+
 onMounted(() => {
   purgeTouchBlockers()
-  // Номер из ?startapp= читаем до bootstrap: после auth bridge/query всё ещё доступны, но так проще отладить.
-  const startupTicket = parseTicketNumberFromStartParam(getMaxStartParam())
-  if (startupTicket && import.meta.env.DEV) {
-    console.info('[nav] startup deep link ticket', { ticketNumber: startupTicket })
+  // Read ?startapp= before auth so the original MAX open_app payload is retained for navigation.
+  const startupTarget = parseStartTargetFromStartParam(getMaxStartParam())
+  if (startupTarget && import.meta.env.DEV) {
+    console.info('[nav] startup deep link', startupTarget)
   }
 
   bootstrapAuth().then(async (response) => {
     const user = response?.data?.user || null
     const stage = response?.data?.stage
     const bootstrapOk = Boolean(response?.data?.success)
-    const ticketNumber =
-      startupTicket || parseTicketNumberFromStartParam(getMaxStartParam())
+    const target = startupTarget || parseStartTargetFromStartParam(getMaxStartParam())
 
-    // Deep link: после успешного auth открываем карточку (в DEV — даже если employeeFound ещё не подтянулся).
+    // Open the requested card only after auth validates the current MAX user.
     if (
-      ticketNumber &&
+      target &&
       bootstrapOk &&
       user &&
       (user.employeeFound || import.meta.env.DEV)
     ) {
-      await openTicketDetails(ticketNumber, 'search')
+      if (target.type === 'approval') {
+        await openApproval(target.number)
+      } else {
+        await openTicketDetails(target.number, 'search')
+      }
       return
     }
 
-    if (ticketNumber && import.meta.env.DEV) {
+    if (target && import.meta.env.DEV) {
       console.warn('[nav] deep link skipped', {
-        ticketNumber,
+        ...target,
         bootstrapOk,
         stage,
         employeeFound: user?.employeeFound ?? null
@@ -203,6 +238,7 @@ onMounted(() => {
 
     if (stage === 'ready' && user?.employeeFound) {
       loadTicketLists()
+      loadApprovals()
     }
   })
 })
@@ -259,6 +295,14 @@ function openResponsibleTicketDetails(ticketNumber) {
                 class="burger-menu"
                 aria-label="Навигация по приложению"
               >
+                <button
+                  class="burger-menu-item burger-menu-item--approvals"
+                  :class="{ active: activeScreen === 'myApprovals' }"
+                  type="button"
+                  @click="openScreen('myApprovals')"
+                >
+                  Мои согласования
+                </button>
                 <button
                   v-for="screen in screenOptions"
                   :key="screen.id"
@@ -350,6 +394,29 @@ function openResponsibleTicketDetails(ticketNumber) {
           :current-tickets-page="currentTicketsPage"
           @open-ticket-details="openMyTicketDetails"
           @set-tickets-page="setTicketsPage"
+        />
+
+        <MyApprovalsScreen
+          v-else-if="activeScreen === 'myApprovals'"
+          :is-loading="isLoadingApprovals"
+          :errors="approvalListErrors"
+          :approvals="paginatedApprovals"
+          :page-count="approvalsPageCount"
+          :current-page="currentApprovalsPage"
+          @open-approval="openApproval"
+          @set-page="setApprovalsPage"
+        />
+
+        <ApprovalDetailsScreen
+          v-else-if="activeScreen === 'approvalDetails'"
+          :approval="selectedApproval"
+          :is-loading="isLoadingApprovalDetails"
+          :is-submitting-vote="isSubmittingApprovalVote"
+          :errors="approvalDetailsErrors"
+          :vote-comment="voteComment"
+          @open-screen="openScreen"
+          @update:vote-comment="setVoteComment"
+          @submit-vote="submitApprovalVote"
         />
 
         <ResponsibleTicketsScreen

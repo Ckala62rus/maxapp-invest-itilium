@@ -325,6 +325,46 @@ type ConfirmTicketRequest struct {
 	Comment string `json:"comment"`
 }
 
+// ApprovalSummary describes one task returned by ITILIUM list_negotations.
+type ApprovalSummary struct {
+	// Number stores vote_number used to open the detailed approval card.
+	Number string `json:"number"`
+	// Description stores the task description returned by list_negotations.
+	Description string `json:"description"`
+	// DeadlineHours stores deadline_date, measured in hours by ITILIUM.
+	DeadlineHours int `json:"deadlineHours"`
+}
+
+// ApprovalDetail describes one approval task returned by ITILIUM.
+type ApprovalDetail struct {
+	// Number stores the ITILIUM approval number.
+	Number string `json:"number"`
+	// Author stores the person who completed the approval when available.
+	Author string `json:"author"`
+	// ExecutionDate stores the requested execution date.
+	ExecutionDate string `json:"executionDate"`
+	// DeadlineDate stores the approval deadline returned by ITILIUM.
+	DeadlineDate string `json:"deadlineDate"`
+	// ResultNegotiation stores the current approval result.
+	ResultNegotiation string `json:"resultsNegotiation"`
+	// Description stores the approval description.
+	Description string `json:"description"`
+	// Document stores the source document for the approval.
+	Document string `json:"document"`
+}
+
+// VoteApprovalRequest stores the decision submitted for an approval task.
+type VoteApprovalRequest struct {
+	// UserID stores the acting MAX user identifier. It is populated from the authenticated session.
+	UserID string `json:"userId"`
+	// VoteNumber stores the ITILIUM approval number.
+	VoteNumber string `json:"voteNumber"`
+	// State stores either accept or reject.
+	State string `json:"state"`
+	// CommentText stores an optional comment.
+	CommentText string `json:"commentText,omitempty"`
+}
+
 // ResponsibleOption stores one available responsible person.
 type ResponsibleOption struct {
 	// Team stores the team name.

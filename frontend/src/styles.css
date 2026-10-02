@@ -354,6 +354,18 @@ button {
   border-color: rgba(127, 165, 255, 0.45);
 }
 
+.burger-menu-item--approvals {
+  background: rgba(120, 67, 190, 0.3);
+  border-color: rgba(195, 143, 255, 0.5);
+  font-weight: 700;
+}
+
+.burger-menu-item--approvals:hover,
+.burger-menu-item--approvals.active {
+  background: rgba(144, 82, 226, 0.44);
+  border-color: rgba(218, 186, 255, 0.8);
+}
+
 .menu-enter-active,
 .menu-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;
@@ -672,6 +684,53 @@ textarea {
   padding: 16px;
   background: rgba(12, 20, 34, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.approval-card {
+  width: 100%;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.approval-card:hover,
+.approval-card:focus-visible {
+  border-color: rgba(168, 85, 247, 0.7);
+  background: rgba(34, 22, 57, 0.86);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.approval-card p {
+  margin: 10px 0 0;
+  color: #9eb4d0;
+  line-height: 1.45;
+}
+
+.approval-details-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.approval-comment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #c8d7ea;
+}
+
+.approval-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.approval-reject-button {
+  border-color: rgba(244, 63, 94, 0.45);
+  color: #ffc1ce;
 }
 
 .chip-list,
@@ -1051,7 +1110,8 @@ body:not(.swal2-shown) .swal2-container {
 
 body.swal2-shown .swal2-container,
 .swal2-container.swal2-shown {
-  display: flex !important;
+  /* SweetAlert2 centers popups with its native grid layout; flex aligns them to the left by default. */
+  display: grid !important;
   visibility: visible !important;
   pointer-events: auto !important;
 }

@@ -45,6 +45,12 @@ type ItiliumClient interface {
 	ListMarketingSubdivisions(ctx context.Context, userID string) ([]models.MarketingSubdivision, error)
 	// CreateMarketingRequest creates a marketing request through legacy 1C endpoint.
 	CreateMarketingRequest(ctx context.Context, request models.CreateMarketingRequest) (models.TicketDetail, error)
+	// ListApprovals returns approval summaries for the current user.
+	ListApprovals(ctx context.Context, userID string) ([]models.ApprovalSummary, error)
+	// GetApproval returns the details of one approval task.
+	GetApproval(ctx context.Context, userID string, number string) (models.ApprovalDetail, error)
+	// VoteApproval submits accept or reject for an approval task.
+	VoteApproval(ctx context.Context, request models.VoteApprovalRequest) (string, error)
 }
 
 // TicketService orchestrates ticket list and workflow use cases.
@@ -261,6 +267,47 @@ func (s *TicketService) ConfirmTicket(ctx context.Context, number string, reques
 	}
 	s.cacheMutatedTicket(ctx, request.UserID, ticket)
 	return ticket, nil
+}
+
+// ListApprovals returns approval summaries for the current authenticated MAX user.
+func (s *TicketService) ListApprovals(ctx context.Context, userID string) ([]models.ApprovalSummary, error) {
+	// ITILIUM uses the authenticated MAX ID to select the employee's approval tasks.
+	if strings.TrimSpace(userID) == "" {
+		return nil, errors.New("user id is required")
+	}
+
+	// list_negotations already provides the display fields, so no per-task detail requests are needed.
+	return s.client.ListApprovals(ctx, userID)
+}
+
+// GetApproval returns the requested approval task details.
+func (s *TicketService) GetApproval(ctx context.Context, userID string, number string) (models.ApprovalDetail, error) {
+	if strings.TrimSpace(userID) == "" {
+		return models.ApprovalDetail{}, errors.New("user id is required")
+	}
+	if strings.TrimSpace(number) == "" {
+		return models.ApprovalDetail{}, errors.New("approval number is required")
+	}
+
+	return s.client.GetApproval(ctx, userID, number)
+}
+
+// VoteApproval validates and submits an approval decision to ITILIUM.
+func (s *TicketService) VoteApproval(ctx context.Context, request models.VoteApprovalRequest) (string, error) {
+	if strings.TrimSpace(request.UserID) == "" {
+		return "", errors.New("user id is required")
+	}
+	if strings.TrimSpace(request.VoteNumber) == "" {
+		return "", errors.New("approval number is required")
+	}
+
+	state := strings.ToLower(strings.TrimSpace(request.State))
+	if state != "accept" && state != "reject" {
+		return "", errors.New("state must be either accept or reject")
+	}
+	request.State = state
+
+	return s.client.VoteApproval(ctx, request)
 }
 
 func ticketCacheKey(userID string, number string) string {

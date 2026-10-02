@@ -495,6 +495,52 @@ func (h *Handler) ConfirmTicket(writer http.ResponseWriter, request *http.Reques
 	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Message: "rating submitted", Data: ticket})
 }
 
+// ListApprovals returns approval summaries for the current MAX user.
+func (h *Handler) ListApprovals(writer http.ResponseWriter, request *http.Request) {
+	// Take the MAX ID from the authenticated request context, not from frontend input.
+	approvals, err := h.ticketService.ListApprovals(request.Context(), middleware.UserIDFromContext(request.Context()))
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: approvals})
+}
+
+// GetApproval returns the full information for one approval task.
+func (h *Handler) GetApproval(writer http.ResponseWriter, request *http.Request) {
+	approval, err := h.ticketService.GetApproval(
+		request.Context(),
+		middleware.UserIDFromContext(request.Context()),
+		request.PathValue("number"),
+	)
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Data: approval})
+}
+
+// VoteApproval accepts or rejects an approval task. The MAX ID and task number are always taken from the session and URL.
+func (h *Handler) VoteApproval(writer http.ResponseWriter, request *http.Request) {
+	var payload models.VoteApprovalRequest
+	if err := decodeJSON(request, &payload); err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	payload.UserID = middleware.UserIDFromContext(request.Context())
+	payload.VoteNumber = request.PathValue("number")
+	message, err := h.ticketService.VoteApproval(request.Context(), payload)
+	if err != nil {
+		h.writeError(writer, request, http.StatusBadRequest, err)
+		return
+	}
+
+	h.writeJSON(writer, request, http.StatusOK, models.APIResponse{Success: true, Message: message})
+}
+
 // ListMarketingServices returns available marketing types with dynamic form numbers.
 func (h *Handler) ListMarketingServices(writer http.ResponseWriter, request *http.Request) {
 	services, err := h.ticketService.ListMarketingServices(request.Context(), middleware.UserIDFromContext(request.Context()))

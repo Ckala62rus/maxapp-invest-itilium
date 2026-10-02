@@ -937,6 +937,151 @@ func parseTicketNumbers(payload []byte) ([]string, error) {
 	return nil, fmt.Errorf("decode list_sc_responsible response: %s", rawText)
 }
 
+// ListApprovals returns approval summaries from ITILIUM list_negotations.
+func (c *Client) ListApprovals(ctx context.Context, userID string) ([]models.ApprovalSummary, error) {
+	// The documented request stays GET /list_negotations?id={maxUserId}, without a request body.
+	payload, err := c.doJSONRequestPayload(ctx, http.MethodGet, "/list_negotations", map[string]string{
+		"id": strings.TrimSpace(userID),
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// The list response already contains vote_number, description, and deadline_date for list cards.
+	return parseApprovalSummaries(payload)
+}
+
+// GetApproval returns one approval task from ITILIUM find_negotation.
+func (c *Client) GetApproval(ctx context.Context, userID string, number string) (models.ApprovalDetail, error) {
+	payload, err := c.doJSONRequestPayload(ctx, http.MethodGet, "/find_negotation", map[string]string{
+		"id":          strings.TrimSpace(userID),
+		"vote_number": strings.TrimSpace(number),
+	}, nil)
+	if err != nil {
+		return models.ApprovalDetail{}, err
+	}
+
+	item, err := unmarshalItiliumObjectOrStringError(payload)
+	if err != nil {
+		return models.ApprovalDetail{}, err
+	}
+	if item == nil {
+		return models.ApprovalDetail{}, errors.New("approval details are empty")
+	}
+
+	return models.ApprovalDetail{
+		Number:            strings.TrimSpace(number),
+		Author:            pickStringFromMap(item, "author", "Author"),
+		ExecutionDate:     pickStringFromMap(item, "execution_date", "executionDate", "ExecutionDate"),
+		DeadlineDate:      pickStringFromMap(item, "deadline_date", "deadlineDate", "DeadlineDate"),
+		ResultNegotiation: pickStringFromMap(item, "results_negotation", "results_negotiation", "resultsNegotiation", "ResultsNegotiation"),
+		Description:       pickStringFromMap(item, "description", "Description"),
+		Document:          pickStringFromMap(item, "document", "Document"),
+	}, nil
+}
+
+// VoteApproval submits the documented JSON payload to ITILIUM vote_change.
+func (c *Client) VoteApproval(ctx context.Context, request models.VoteApprovalRequest) (string, error) {
+	payload, err := c.doJSONRequestPayload(ctx, http.MethodPost, "/vote_change", nil, struct {
+		ID          string `json:"id"`
+		VoteNumber  string `json:"vote_number"`
+		State       string `json:"state"`
+		CommentText string `json:"comment_text,omitempty"`
+	}{
+		ID:          strings.TrimSpace(request.UserID),
+		VoteNumber:  strings.TrimSpace(request.VoteNumber),
+		State:       strings.TrimSpace(request.State),
+		CommentText: strings.TrimSpace(request.CommentText),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return parseApprovalVoteResponse(payload)
+}
+
+// parseApprovalSummaries converts list_negotations objects into the compact approval-card model.
+func parseApprovalSummaries(payload []byte) ([]models.ApprovalSummary, error) {
+	// 1C can prepend a UTF-8 BOM; remove it before decoding the JSON array.
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	if strings.TrimSpace(string(clean)) == "" {
+		return []models.ApprovalSummary{}, nil
+	}
+
+	// deadline_date is a duration in hours, rather than a calendar date.
+	var items []struct {
+		VoteNumber    string `json:"vote_number"`
+		Description   string `json:"description"`
+		DeadlineHours int    `json:"deadline_date"`
+	}
+	if err := json.Unmarshal(clean, &items); err != nil {
+		// Forward ITILIUM business errors, otherwise report an unexpected success payload.
+		if _, payloadErr := unmarshalItiliumObjectOrStringError(clean); payloadErr != nil {
+			return nil, payloadErr
+		}
+		return nil, fmt.Errorf("decode list_negotations response: %s", strings.TrimSpace(string(clean)))
+	}
+
+	// Trim identifiers and skip malformed entries that cannot open a detailed approval card.
+	summaries := make([]models.ApprovalSummary, 0, len(items))
+	seenNumbers := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		number := strings.TrimSpace(item.VoteNumber)
+		if number == "" {
+			continue
+		}
+		if _, exists := seenNumbers[number]; exists {
+			continue
+		}
+		seenNumbers[number] = struct{}{}
+		summaries = append(summaries, models.ApprovalSummary{
+			Number:        number,
+			Description:   strings.TrimSpace(item.Description),
+			DeadlineHours: item.DeadlineHours,
+		})
+	}
+	return summaries, nil
+}
+
+func parseApprovalVoteResponse(payload []byte) (string, error) {
+	clean := bytes.TrimPrefix(payload, []byte{0xEF, 0xBB, 0xBF})
+	if strings.TrimSpace(string(clean)) == "" {
+		return "Решение по согласованию сохранено.", nil
+	}
+
+	var response any
+	if err := json.Unmarshal(clean, &response); err != nil {
+		return "", fmt.Errorf("decode vote_change response: %w", err)
+	}
+
+	message := ""
+	switch value := response.(type) {
+	case string:
+		message = strings.TrimSpace(value)
+	case map[string]any:
+		if errMessage := pickStringFromMap(value, "error", "Error", "errors", "Errors"); errMessage != "" {
+			return "", errors.New(errMessage)
+		}
+		message = pickStringFromMap(value, "message", "Message", "description", "Description", "result", "Result")
+		if message == "" {
+			message = "Решение по согласованию сохранено."
+		}
+	default:
+		return "", fmt.Errorf("decode vote_change response: unexpected type %T", response)
+	}
+
+	lower := strings.ToLower(message)
+	for _, marker := range []string{"ошиб", "не удалось", "не найден", "недоступ", "отказ"} {
+		if strings.Contains(lower, marker) {
+			return "", errors.New(message)
+		}
+	}
+	if message == "" {
+		message = "Решение по согласованию сохранено."
+	}
+	return message, nil
+}
+
 // GetTicket returns one detailed ticket card.
 func (c *Client) GetTicket(ctx context.Context, userID string, number string) (models.TicketDetail, error) {
 	query := map[string]string{
@@ -1354,7 +1499,7 @@ func appendMarketingExecutionDateAliases(form url.Values, rawDate string) {
 
 	// 1С на разных публикациях ожидает ISO, календарную дату или дату-время как в find_sc.
 	for key, value := range map[string]string{
-		"ExecutionDate":          calendarDateTime,
+		"ExecutionDate": calendarDateTime,
 		"ЖелаемаяДатаИсполнения": calendarDateTime,
 		"ДатаИсполнения":         calendarDate,
 		"executionDate":          isoDate,
@@ -2413,8 +2558,8 @@ func buildChangeResponsibleFields(number string, request models.ChangeResponsibl
 
 // changeResponsibleAttempt — один способ вызова change_responsible_sc (multipart или query).
 type changeResponsibleAttempt struct {
-	label   string
-	query   url.Values
+	label     string
+	query     url.Values
 	multipart url.Values
 }
 
@@ -2684,19 +2829,19 @@ func parseFindSCResponse(payload map[string]any, fallbackNumber string) models.T
 	}
 
 	detail := models.TicketDetail{
-		Number:               pickStringFromMap(source, "number", "Number", "sc_number", "sc", "ServiceCallNumber", "Номер"),
-		Title:                pickStringFromMap(source, "title", "Title", "shortDescription", "ShortDescription", "Тема"),
-		Description:          pickStringFromMap(source, "description", "Description", "text", "Текст"),
-		CreationDate:         pickStringFromMap(source, "creationDate", "CreationDate", "dateCreate", "ДатаСоздания"),
-		State:                pickStringFromMap(source, "state", "State", "status", "Status", "Состояние"),
-		Deadline:             pickStringFromMap(source, "deadline", "Deadline", "deadlineDate", "executionDate", "ДатаИсполнения"),
+		Number:                pickStringFromMap(source, "number", "Number", "sc_number", "sc", "ServiceCallNumber", "Номер"),
+		Title:                 pickStringFromMap(source, "title", "Title", "shortDescription", "ShortDescription", "Тема"),
+		Description:           pickStringFromMap(source, "description", "Description", "text", "Текст"),
+		CreationDate:          pickStringFromMap(source, "creationDate", "CreationDate", "dateCreate", "ДатаСоздания"),
+		State:                 pickStringFromMap(source, "state", "State", "status", "Status", "Состояние"),
+		Deadline:              pickStringFromMap(source, "deadline", "Deadline", "deadlineDate", "executionDate", "ДатаИсполнения"),
 		ResponsibleEmployee:   pickStringFromMap(source, "responsibleEmployee", "responsibleEmployeeTitle", "ResponsibleEmployeeTitle"),
 		ResponsibleEmployeeID: pickStringFromMap(source, "responsibleEmployeeId", "ResponsibleEmployeeId", "responsibleId", "ResponsibleId"),
 		ResponsibleTeam:       pickStringFromMap(source, "responsibleTeam", "responsibleTeamTitle", "ResponsibleTeam", "client", "OU", "Подразделение"),
-		CanChangeStatus:      boolFromAny(firstAny(source, "canChangeStatus", "change_status")),
-		CanChangeResponsible: boolFromAny(firstAny(source, "canChangeResponsible", "change_responsible")),
-		CanConfirmRating:     boolFromAny(firstAny(source, "canConfirmRating", "needRating", "confirm_rating", "need_confirm")),
-		AvailableStates:      firstStringSlice(source, "availableStates", "new_state", "newState"),
+		CanChangeStatus:       boolFromAny(firstAny(source, "canChangeStatus", "change_status")),
+		CanChangeResponsible:  boolFromAny(firstAny(source, "canChangeResponsible", "change_responsible")),
+		CanConfirmRating:      boolFromAny(firstAny(source, "canConfirmRating", "needRating", "confirm_rating", "need_confirm")),
+		AvailableStates:       firstStringSlice(source, "availableStates", "new_state", "newState"),
 	}
 
 	if detail.Number == "" {
@@ -3153,6 +3298,40 @@ func (c *DemoClient) ListResponsibleTickets(_ context.Context, _ string) ([]mode
 		{Number: "SC-000308", Title: "Нужна смена ответственного", State: "В работе", Deadline: "12.04.2026", ResponsibleTeam: "Отдел ИТ"},
 		{Number: "SC-000299", Title: "Добавить комментарий по инциденту", State: "На согласовании", Deadline: "13.04.2026", ResponsibleTeam: "Отдел ИТ"},
 	}, nil
+}
+
+// ListApprovals returns deterministic approval summaries for the demo flow.
+func (c *DemoClient) ListApprovals(_ context.Context, _ string) ([]models.ApprovalSummary, error) {
+	// Mirror list_negotations fields so the list card can be reviewed without a live ITILIUM server.
+	return []models.ApprovalSummary{
+		{Number: "000001830", Description: "Согласование изменений по заявке", DeadlineHours: 120},
+		{Number: "000001834", Description: "Согласование закупки оборудования", DeadlineHours: 72},
+		{Number: "000001841", Description: "Согласование доступа к системе", DeadlineHours: 48},
+		{Number: "000001879", Description: "Согласование работ по заявке", DeadlineHours: 24},
+		{Number: "000001907", Description: "Согласование изменения графика", DeadlineHours: 96},
+		{Number: "000001916", Description: "Согласование служебного документа", DeadlineHours: 120},
+	}, nil
+}
+
+// GetApproval returns a deterministic approval task for the demo flow.
+func (c *DemoClient) GetApproval(_ context.Context, _ string, number string) (models.ApprovalDetail, error) {
+	return models.ApprovalDetail{
+		Number:            number,
+		Author:            "",
+		ExecutionDate:     "",
+		DeadlineDate:      "120",
+		ResultNegotiation: "Ожидает решения",
+		Description:       "Согласование изменений по заявке",
+		Document:          "Обращение " + number,
+	}, nil
+}
+
+// VoteApproval returns a deterministic success message for the demo flow.
+func (c *DemoClient) VoteApproval(_ context.Context, request models.VoteApprovalRequest) (string, error) {
+	if request.State == "accept" {
+		return "Согласование подтверждено.", nil
+	}
+	return "Согласование отклонено.", nil
 }
 
 // GetTicket returns one static ticket card.

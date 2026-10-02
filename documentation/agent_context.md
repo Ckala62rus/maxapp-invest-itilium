@@ -2,7 +2,7 @@
 
 ## Repo conventions
 
-- **`tools/` не коммитить** — локальные утилиты (max-notify, Postman-коллекции и т.п.), остаются только на машине разработчика.
+- **`tools/` не коммитить** — локальные утилиты остаются только на машине разработчика. Отслеживаемая Postman-коллекция MAX-уведомлений находится в `documentation/max-notify.postman_collection.json`.
 
 ## Current State
 
@@ -58,6 +58,7 @@
 - Added ready-to-import raw ITILIUM Postman collection at `documentation/itilium-raw.postman_collection.json` with Basic Auth, `hs/Max` legacy endpoints, and example payloads for lookup, tickets, comments, workflow, and marketing methods.
 - Added Russian per-route descriptions in `documentation/itilium-raw.postman_collection.json` (`item.description`) so endpoint purpose is visible directly in Postman UI.
 - Added Russian `description` for request parameters in `documentation/itilium-raw.postman_collection.json` (query/urlencoded/form-data keys) so Postman shows a clear hint for each field.
+- `documentation/max-notify.postman_collection.json` contains production-oriented MAX Bot API requests with `contact_id` for ticket (`ticket_<number>`) and approval (`approval_<vote_number>`) deep links.
 - Follow-up live logs on 2026-06-01 showed POST-with-query accepts `Services`/`Subdivision` but still rejects the execution date when date aliases are only in query. For no-file marketing requests backend now sends service/subdivision/form fields in query and execution-date aliases in urlencoded POST body, then retries compact date-body variants before falling back to query-only.
 - Live logs on 2026-06-04 showed `POST /change_state_sc` returning HTTP `200` with body `"Не заполнены обязательные параметры"` while the UI still showed the new status: backend treated empty-error handling as success and forced `detail.State` when `find_sc` stayed stale. Fix: parse JSON-string errors from multipart mutations; for «Отложено» 1С confirmed fields `comment_text` + `date_inc` (`YYYY-MM-DD`, e.g. `2026-06-04`); overlay state only after successful `change_state_sc`. Mobile Android MAX: ранний inline touch-bridge в `index.html` (до Vue), `purgeTouchBlockers()`, tap-bridge для любого `window.WebApp` / coarse pointer, без `preventDefault` на touchend.
 - `change_state_sc` may return HTTP 200 with `"Новое состояние установлено"` — backend must not treat that JSON string as an error (was HTTP 400 + UI «не удалось открыть»).

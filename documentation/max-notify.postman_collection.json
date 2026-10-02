@@ -1,0 +1,136 @@
+{
+  "info": {
+    "name": "MAX Notify — deep links заявок и согласований",
+    "_postman_id": "b8d7c1f9-36e5-4eea-9d5c-1de48a8a8d02",
+    "description": "Отправка личных сообщений через MAX Bot API (platform-api2.max.ru).\n\nПолучатель должен хотя бы раз открыть чат с ботом до первой личной отправки.\n\nПеременные:\n- maxApiBase — https://platform-api2.max.ru\n- maxBotToken — токен бота, заголовок Authorization без Bearer\n- maxNotifyUserId — MAX user id получателя\n- maxBotContactId — user_id бота из GET /me\n- ticketNumber — номер заявки\n- approvalNumber — номер согласования (vote_number)\n\nКнопка open_app передаёт payload в Mini App как initDataUnsafe.start_param. Допустимые payload: ticket_<номер> и approval_<vote_number>.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Authorization",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{maxBotToken}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "maxApiBase",
+      "value": "https://platform-api2.max.ru"
+    },
+    {
+      "key": "maxBotToken",
+      "value": ""
+    },
+    {
+      "key": "maxNotifyUserId",
+      "value": ""
+    },
+    {
+      "key": "maxBotContactId",
+      "value": ""
+    },
+    {
+      "key": "ticketNumber",
+      "value": "0000024311"
+    },
+    {
+      "key": "approvalNumber",
+      "value": "000001830"
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /me — проверить токен и получить contact_id",
+      "request": {
+        "auth": {
+          "type": "inherit"
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{maxApiBase}}/me",
+        "description": "Скопируйте user_id из ответа в maxBotContactId. Для production используйте contact_id в open_app кнопке."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /messages — открыть заявку в Mini App",
+      "request": {
+        "auth": {
+          "type": "inherit"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"Вам назначена заявка {{ticketNumber}}.\",\n  \"notify\": true,\n  \"attachments\": [\n    {\n      \"type\": \"inline_keyboard\",\n      \"payload\": {\n        \"buttons\": [\n          [\n            {\n              \"type\": \"open_app\",\n              \"text\": \"Открыть заявку {{ticketNumber}}\",\n              \"contact_id\": {{maxBotContactId}},\n              \"payload\": \"ticket_{{ticketNumber}}\"\n            }\n          ]\n        ]\n      }\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{maxApiBase}}/messages?user_id={{maxNotifyUserId}}",
+        "description": "Открывает карточку заявки. Payload должен иметь вид ticket_<номер>; MAX не принимает двоеточие в start_param."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /messages — открыть согласование в Mini App",
+      "request": {
+        "auth": {
+          "type": "inherit"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"Вам поступило согласование {{approvalNumber}}.\",\n  \"notify\": true,\n  \"attachments\": [\n    {\n      \"type\": \"inline_keyboard\",\n      \"payload\": {\n        \"buttons\": [\n          [\n            {\n              \"type\": \"open_app\",\n              \"text\": \"Открыть согласование {{approvalNumber}}\",\n              \"contact_id\": {{maxBotContactId}},\n              \"payload\": \"approval_{{approvalNumber}}\"\n            }\n          ]\n        ]\n      }\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{maxApiBase}}/messages?user_id={{maxNotifyUserId}}",
+        "description": "Открывает карточку согласования. Payload approval_<vote_number> передаётся Mini App в initDataUnsafe.start_param."
+      },
+      "response": []
+    }
+  ]
+}

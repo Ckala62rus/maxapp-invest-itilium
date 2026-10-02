@@ -1,6 +1,7 @@
 import { createStore } from 'vuex'
 import auth from '@/store/modules/auth'
 import tickets from '@/store/modules/tickets'
+import approvals from '@/store/modules/approvals'
 
 /** Корневой store: только модули auth и tickets, без глобального дублирования сущностей. */
 export default createStore({
@@ -10,6 +11,7 @@ export default createStore({
   actions: {},
   modules: {
     auth,
-    tickets
+    tickets,
+    approvals
   }
 })
