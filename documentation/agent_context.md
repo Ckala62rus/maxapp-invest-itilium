@@ -8,9 +8,9 @@
 
 - Dev frontend in Docker: API proxy `VITE_API_PROXY_TARGET=http://backend-dev:3000`. **Daily dev on Windows: `http://localhost:5173`** (direct Vite, stable HMR). **`http://localhost:8080`** (nginx) may spontaneous-reload on Windows due to HMR WebSocket through proxy; optional `VITE_DISABLE_HMR=true` for stable 8080.
 - Docker containers are currently started by the user and ready for the next external integration checks.
-- The ITILIUM dev target is built from `ITILIUM_HOST` in `.env` through `docker-compose.dev.yml`.
-- TLS verification is temporarily disabled with `itilium.insecure_skip_verify: true` because the current test host is addressed by IP.
-- The legacy user lookup contract was updated to `POST /find_employee` under `/itilium-test/hs/Max/` with form field `id`.
+- The ITILIUM dev target uses `ITILIUM_BASE_URL` from `.env`; its fallback is `https://1c.tdbars.ru/itilium_test/hs/Max/`.
+- TLS verification is temporarily disabled with `itilium.insecure_skip_verify: true` only for IP/self-signed development targets.
+- The legacy user lookup contract was updated to `POST /find_employee` under `/itilium_test/hs/Max/` with form field `id`.
 - Live verification on 2026-04-15 confirmed `GET /api/v1/users/me` reaches ITILIUM and currently maps the upstream `401` for user `100245` into `registrationRequired=true`.
 - A new Telegram bot was created by the user and is currently waiting for moderation before end-to-end mini app checks can start.
 - The app now has a first MAX auth slice: frontend loads `max-web-app.js`, reads `window.WebApp.initData`, exchanges it through `POST /api/v1/auth/max/validate`, and then uses a backend bearer token for protected API calls.
@@ -23,7 +23,7 @@
 - `POST /api/v1/users/employee` calls legacy `find_employee` and returns normalized lookup data plus `raw`.
 - `GET /api/v1/users/me` now uses `find_employee` when there is no confirmed stored registration profile.
 - `GET /api/v1/users/me` interprets 1C status codes as onboarding states: `200 -> found`, `401/404 -> registration required`, `403 -> registration pending`.
-- `POST /api/v1/users/register` now calls the real ITILIUM endpoint `POST /registration` under `/itilium-test/hs/Max/` with form fields `id`, `FIO`, `Organization`, `Subdivision`, `NamePosition`, and then stores local `registrationPending=true` after a successful upstream response.
+- `POST /api/v1/users/register` now calls the real ITILIUM endpoint `POST /registration` under `/itilium_test/hs/Max/` with form fields `id`, `FIO`, `Organization`, `Subdivision`, `NamePosition`, and then stores local `registrationPending=true` after a successful upstream response.
 - The frontend profile screen shows `MAX ID`, ITILIUM fields (organization, department, position), and `servicecalls` count when present.
 - «Мои заявки»: when `GET /api/v1/users/me` returns non-empty `servicecalls` for a found employee, the list is built from those numbers (5 per page); otherwise the previous Vuex/mock path remains.
 - The large left-side prototype overview blocks were removed so the UI focuses on the actual mini app shell.

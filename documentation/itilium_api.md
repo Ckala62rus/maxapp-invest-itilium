@@ -10,13 +10,11 @@
 
 ## Какой сервер использовать
 
-Тестовый ITILIUM из aiogram reference:
+Подтверждённый тестовый ITILIUM:
 
-- `https://<host>/itilium-test/hs/Max/`
+- `https://1c.tdbars.ru/itilium_test/hs/Max/`
 
-Откуда это взято:
-
-- `example/telegram_bot_itilium/.env`
+Адрес задаётся переменной `ITILIUM_BASE_URL` в `.env`.
 
 Какие переменные нужны в текущем проекте:
 

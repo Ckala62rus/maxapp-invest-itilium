@@ -2,7 +2,7 @@
   "info": {
     "name": "ITILIUM Raw API (hs/Max)",
     "_postman_id": "9d66f186-ccf9-4f44-9087-a31f069586dd",
-    "description": "Raw ITILIUM endpoints collection for direct debugging of 1C publication.\n\nCollection auth: Basic Auth (itiliumLogin / itiliumPassword).\n\nVariables:\n- itiliumBaseUrl: e.g. https://1c.tdbars.ru/itilium-test/hs/Max\n- userId: MAX user identifier used as id/telegram\n- ticketNumber: incident number\n- approvalNumber: approval task number\n- responsibleId: target responsible employee id\n- newState: target workflow state",
+    "description": "Raw ITILIUM endpoints collection for direct debugging of 1C publication.\n\nCollection auth: Basic Auth (itiliumLogin / itiliumPassword).\n\nVariables:\n- itiliumBaseUrl: https://1c.tdbars.ru/itilium_test/hs/Max/\n- userId: MAX user identifier used as id/telegram\n- ticketNumber: incident number\n- approvalNumber: approval task number\n- responsibleId: target responsible employee id\n- newState: target workflow state",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -23,7 +23,7 @@
   "variable": [
     {
       "key": "itiliumBaseUrl",
-      "value": "https://1c.tdbars.ru/itilium-test/hs/Max"
+      "value": "https://1c.tdbars.ru/itilium_test/hs/Max/"
     },
     {
       "key": "itiliumLogin",
