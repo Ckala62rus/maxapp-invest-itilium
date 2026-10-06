@@ -2,19 +2,19 @@ import approvalsApi from '@/api/approvals'
 
 function normalizeApprovalError(error) {
   const backendMessage = String(error?.response?.data?.message || '').trim()
-  if (backendMessage) {
-    return backendMessage
-  }
-
+  const fallbackMessage = String(error?.message || 'Не удалось выполнить запрос к ITILIUM.').trim()
+  const message = backendMessage || fallbackMessage
   const status = error?.response?.status
-  if (status === 404) {
-    return 'Согласование не найдено в ITILIUM.'
+
+  // The backend currently proxies an ITILIUM 404 as HTTP 400 with this message.
+  if (status === 404 || /status 404/i.test(message)) {
+    return 'Такого согласования нет или оно недоступно вам в ITILIUM.'
   }
   if (status >= 500) {
     return 'ITILIUM временно недоступен. Повторите попытку позже.'
   }
 
-  return String(error?.message || 'Не удалось выполнить запрос к ITILIUM.').trim()
+  return message
 }
 
 const state = {
